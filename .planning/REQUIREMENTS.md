@@ -114,13 +114,57 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| — | — | — |
+| SIM-01 | Phase 1 | Pending |
+| SIM-02 | Phase 1 | Pending |
+| SIM-03 | Phase 1 | Pending |
+| SIM-04 | Phase 1 | Pending |
+| POD-01 | Phase 1 | Pending |
+| POD-02 | Phase 1 | Pending |
+| POD-03 | Phase 1 | Pending |
+| POD-04 | Phase 1 | Pending |
+| POD-05 | Phase 1 | Pending |
+| POD-06 | Phase 1 | Pending |
+| HC-01 | Phase 1 | Pending |
+| HC-02 | Phase 1 | Pending |
+| HC-03 | Phase 1 | Pending |
+| HC-04 | Phase 1 | Pending |
+| HC-05 | Phase 1 | Pending |
+| HC-06 | Phase 1 | Pending |
+| HC-07 | Phase 1 | Pending |
+| HC-08 | Phase 1 | Pending |
+| LB-01 | Phase 1 | Pending |
+| LB-02 | Phase 1 | Pending |
+| LB-03 | Phase 1 | Pending |
+| VIZ-01 | Phase 2 | Pending |
+| VIZ-02 | Phase 2 | Pending |
+| VIZ-03 | Phase 2 | Pending |
+| VIZ-04 | Phase 2 | Pending |
+| MET-01 | Phase 2 | Pending |
+| MET-02 | Phase 2 | Pending |
+| MET-03 | Phase 2 | Pending |
+| MET-04 | Phase 2 | Pending |
+| CTL-01 | Phase 3 | Pending |
+| CTL-02 | Phase 3 | Pending |
+| CTL-03 | Phase 3 | Pending |
+| CTL-04 | Phase 3 | Pending |
+| PAR-01 | Phase 3 | Pending |
+| PAR-02 | Phase 3 | Pending |
+| PAR-03 | Phase 3 | Pending |
+| PAR-04 | Phase 3 | Pending |
+| PAR-05 | Phase 3 | Pending |
+| PAR-06 | Phase 3 | Pending |
+| RPT-01 | Phase 4 | Pending |
+| RPT-02 | Phase 4 | Pending |
+| RPT-03 | Phase 4 | Pending |
+| RPT-04 | Phase 4 | Pending |
+| RPT-05 | Phase 4 | Pending |
+| RPT-06 | Phase 4 | Pending |
 
 **Coverage:**
 - v1 requirements: 35 total
-- Mapped to phases: 0
-- Unmapped: 35
+- Mapped to phases: 35
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-04-11*
-*Last updated: 2026-04-11 after initial definition*
+*Last updated: 2026-04-11 after roadmap creation*
