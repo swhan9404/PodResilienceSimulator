@@ -21,10 +21,10 @@ EKS 환경에서 동기(synchronous) worker 기반 Pod들이 느린 요청(slow 
 - [x] Round-robin load balancer (확장 가능 전략 패턴) — Validated in Phase 1: Simulation Engine
 - [x] Request profile 설정 (name, latencyMs, ratio, color — 리스트 형태) — Validated in Phase 1: Simulation Engine
 - [x] 클러스터 설정 (podCount, workersPerPod, maxBacklogPerPod, rps) — Validated in Phase 1: Simulation Engine
+- [x] 실시간 Canvas 기반 Pod 상태 시각화 (worker 점유, backlog, probe 상태) — Validated in Phase 2: Visualization
+- [x] 실시간 메트릭 차트 (worker usage, ready pods, 503 rate, 응답시간) — Validated in Phase 2: Visualization
 
 ### Active
-- [ ] 실시간 Canvas 기반 Pod 상태 시각화 (worker 점유, backlog, probe 상태)
-- [ ] 실시간 메트릭 차트 (worker usage, ready pods, 503 rate, 응답시간)
 - [ ] 배속 조절 (0.5x ~ 100x)
 - [ ] "요청 중단" 기능으로 복구 시간 측정
 - [ ] 결과 리포트 (임계점, profile별 평균 응답시간, 503 비율, 복구시간)
@@ -53,7 +53,7 @@ EKS 환경에서 동기(synchronous) worker 기반 Pod들이 느린 요청(slow 
 | Decision | Rationale | Outcome |
 |----------|-----------|---------|
 | 시뮬레이션 엔진을 브라우저에서 실행 | 네트워크 지연 없이 배속 가능, WebSocket 불필요 | Validated (Phase 1) |
-| Canvas 기반 렌더링 | SVG보다 다수 요소 렌더링 성능 우수 (pod 수십개 + request 수천개) | — Pending |
+| Canvas 기반 렌더링 | SVG보다 다수 요소 렌더링 성능 우수 (pod 수십개 + request 수천개) | Validated (Phase 2) |
 | Health check가 worker 점유 | 실제 gunicorn sync worker 동작과 일치, cascading failure 재현 핵심 | Validated (Phase 1) |
 | Round-robin LB + 전략 패턴 | 당장은 RR만 필요, 나중에 least-connections 등 추가 가능 | Validated (Phase 1) |
 
@@ -75,4 +75,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-04-11 after Phase 1 completion — headless simulation engine verified*
+*Last updated: 2026-04-11 after Phase 2 completion — Canvas pod visualization + uPlot charts verified*
