@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { PodRenderer } from './PodRenderer';
 
 export interface PodCanvasProps {
@@ -20,6 +20,7 @@ function setupCanvas(canvas: HTMLCanvasElement): CanvasRenderingContext2D {
 export function PodCanvas({ rendererRef, onRendererReady, onCanvasResize }: PodCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const prevSizeRef = useRef<{ width: number; height: number }>({ width: 0, height: 0 });
+  const [showLegend, setShowLegend] = useState(false);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -67,10 +68,27 @@ export function PodCanvas({ rendererRef, onRendererReady, onCanvasResize }: PodC
   }, [rendererRef, onRendererReady, onCanvasResize]);
 
   return (
-    <canvas
-      ref={canvasRef}
-      className="w-full"
-      style={{ height: '300px' }}
-    />
+    <div>
+      <canvas
+        ref={canvasRef}
+        className="w-full"
+        style={{ height: '300px' }}
+      />
+      <div className="mt-2">
+        <button
+          onClick={() => setShowLegend(!showLegend)}
+          className="text-xs text-gray-500 hover:text-gray-700 cursor-pointer"
+        >
+          {showLegend ? '▲ Hide Legend' : '▼ Show Legend'}
+        </button>
+        {showLegend && (
+          <div className="mt-1 text-xs text-gray-500 flex gap-6">
+            <span><b>BL</b> — Backlog (queued / max)</span>
+            <span><b>L</b> — Liveness probe (+success / xfail)</span>
+            <span><b>R</b> — Readiness probe (+success / xfail)</span>
+          </div>
+        )}
+      </div>
+    </div>
   );
 }
