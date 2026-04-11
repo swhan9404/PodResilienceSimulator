@@ -41,7 +41,7 @@ interface SimulationStore {
   engineRef: SimulationEngine | null;
   loopRef: SimulationLoop | null;
 
-  // Renderer connection (absorb from useSimulation)
+  // Renderer connection
   rendererRef: { current: PodRenderer | null };
   canvasDimsRef: { current: { width: number; height: number } };
 
