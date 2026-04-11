@@ -30,7 +30,17 @@ EKS 환경에서 동기(synchronous) worker 기반 Pod들이 느린 요청(slow 
 - [x] 결과 리포트 (임계점, profile별 평균 응답시간, 503 비율, 복구시간) — Validated in Phase 4: Report
 
 ### Active
-(No active requirements — all v1.0 milestone requirements validated)
+
+#### Current Milestone: v1.1 Statistical Optimizer
+
+**Goal:** 시뮬레이션 없이 큐잉 이론 기반 수학적 모델로, 주어진 트래픽 조건에서 서비스가 안 죽는 최적 인프라 설정을 찾아주고 비용-안정성 변곡점을 시각화한다.
+
+**Target features:**
+- 큐잉 이론 기반 수학적 계산 엔진 (M/M/c 등 활용, worker 점유/backlog/probe 모델링)
+- 트래픽 파라미터 입력 (RPS, slow request 비율, request latency 프로필)
+- 최적 인프라 파라미터 추천 (workersPerPod, maxBacklog, podCount)
+- 리소스 vs 안정성 그래프 + knee point 표시
+- 시뮬레이터와 별도 탭/페이지로 구성
 
 ### Out of Scope
 
@@ -83,4 +93,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-04-11 after v1.0 milestone*
+*Last updated: 2026-04-12 after v1.1 milestone start*
