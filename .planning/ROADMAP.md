@@ -66,8 +66,8 @@ Plans:
 **UI hint**: yes
 
 Plans:
-- [ ] 03-01-PLAN.md — Zustand store + parameter form components + App layout refactor
-- [ ] 03-02-PLAN.md — RequestProfileList + PlaybackControls + SpeedControl + StatusDisplay + final wiring
+- [x] 03-01-PLAN.md — Zustand store + parameter form components + App layout refactor
+- [x] 03-02-PLAN.md — RequestProfileList + PlaybackControls + SpeedControl + StatusDisplay + final wiring
 
 ### Phase 4: Report
 **Goal**: After a simulation run, users get a summary report showing the critical failure timeline and recovery metrics
