@@ -45,12 +45,13 @@ Plans:
   2. Probe results are visible per pod as a row of check/cross marks for recent probe outcomes
   3. Four time-series charts update in real time: worker usage, ready pod count, 503 rate, and per-profile response time
   4. Visualization remains smooth (no frame drops) at 100x simulation speed
-**Plans**: 3 plans
+**Plans**: 4 plans
 
 Plans:
-- [ ] 02-01-PLAN.md — Deps + Tailwind/uPlot setup + PodRenderer + PodCanvas
-- [ ] 02-02-PLAN.md — MetricsChartManager + MetricsCharts (4 uPlot charts)
-- [ ] 02-03-PLAN.md — SimulationLoop + useSimulation hook + App.tsx integration
+- [x] 02-01-PLAN.md — Deps + Tailwind/uPlot setup + PodRenderer + PodCanvas
+- [x] 02-02-PLAN.md — MetricsChartManager + MetricsCharts (4 uPlot charts)
+- [x] 02-03-PLAN.md — SimulationLoop + useSimulation hook + App.tsx integration
+- [ ] 02-04-PLAN.md — Gap closure: fix Phase 1 TS errors blocking npm run build
 
 ### Phase 3: Controls & Parameters
 **Goal**: Users can configure all simulation parameters and control the simulation lifecycle (start, pause, speed, stop requests) through a React UI
@@ -90,6 +91,6 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Simulation Engine | 0/3 | Planning complete | - |
-| 2. Visualization | 0/3 | Planning complete | - |
+| 2. Visualization | 0/4 | Gap closure planned | - |
 | 3. Controls & Parameters | 0/2 | Not started | - |
 | 4. Report | 0/1 | Not started | - |
