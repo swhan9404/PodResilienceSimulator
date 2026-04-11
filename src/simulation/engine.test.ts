@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { SimulationEngine } from './engine';
-import { SimulationConfig, PodState } from './types';
+import type { SimulationConfig } from './types';
+import { PodState } from './types';
 
 function makeConfig(overrides: Partial<SimulationConfig> = {}): SimulationConfig {
   return {
@@ -86,9 +87,6 @@ describe('SimulationEngine', () => {
     });
 
     it('different seeds produce different results', () => {
-      const engine1 = new SimulationEngine(makeConfig({ seed: 42 }));
-      const engine2 = new SimulationEngine(makeConfig({ seed: 99 }));
-
       // Use a profile mix so seed matters for profile selection
       const mixConfig: Partial<SimulationConfig> = {
         requestProfiles: [

@@ -1,6 +1,5 @@
 import { describe, it, expect } from 'vitest';
 import { Pod } from './pod';
-import type { ProbeResult } from './pod';
 import { PodState } from './types';
 import type { ActiveRequest, ProbeConfig } from './types';
 
