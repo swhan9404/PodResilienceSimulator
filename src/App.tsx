@@ -1,23 +1,22 @@
-import { useSimulation } from './visualization/useSimulation';
+import { useSimulationStore } from './store/useSimulationStore';
+import { ControlPanel } from './components/ControlPanel';
 import { PodCanvas } from './visualization/PodCanvas';
 import { MetricsCharts } from './visualization/MetricsCharts';
-import { DEMO_CONFIG } from './visualization/demoConfig';
 
 function App() {
-  const {
-    chartData,
-    rendererRef,
-    onRendererReady,
-    onCanvasResize,
-    profileNames,
-    profileColors,
-  } = useSimulation(DEMO_CONFIG);
+  const chartData = useSimulationStore((s) => s.chartData);
+  const rendererRef = useSimulationStore((s) => s.rendererRef);
+  const onRendererReady = useSimulationStore((s) => s.onRendererReady);
+  const onCanvasResize = useSimulationStore((s) => s.onCanvasResize);
+  const config = useSimulationStore((s) => s.config);
+
+  const profileNames = config.requestProfiles.map(p => p.name);
+  const profileColors = config.requestProfiles.map(p => p.color);
 
   return (
-    <div className="min-w-[1280px] min-h-screen bg-[var(--bg-dominant)]">
-      {/* Main content area - will become right panel when Phase 3 adds left sidebar */}
-      <div className="p-8 flex flex-col gap-6">
-        {/* Pod Canvas Grid (top section per D-12) */}
+    <div className="min-w-[1280px] min-h-screen bg-[var(--bg-dominant)] flex">
+      <ControlPanel />
+      <div className="flex-1 p-8 flex flex-col gap-6 overflow-auto">
         <section className="bg-[var(--bg-secondary)] rounded-lg p-4 border border-[var(--border-color)]">
           <PodCanvas
             rendererRef={rendererRef}
@@ -25,8 +24,6 @@ function App() {
             onCanvasResize={onCanvasResize}
           />
         </section>
-
-        {/* Metrics Charts (bottom section per D-12) */}
         <section className="bg-[var(--bg-secondary)] rounded-lg p-4 border border-[var(--border-color)]">
           <MetricsCharts
             workerUsageData={chartData.workerUsage}
