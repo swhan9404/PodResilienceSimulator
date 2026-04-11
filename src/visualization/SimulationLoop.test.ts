@@ -1,7 +1,23 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { SimulationLoop } from './SimulationLoop';
 import type { LoopCallbacks } from './SimulationLoop';
 import type { AlignedData } from './MetricsChartManager';
+
+// Stub browser globals for node test environment
+const rafStub = vi.fn(() => 1);
+const cafStub = vi.fn();
+
+beforeEach(() => {
+  (globalThis as any).requestAnimationFrame = rafStub;
+  (globalThis as any).cancelAnimationFrame = cafStub;
+});
+
+afterEach(() => {
+  delete (globalThis as any).requestAnimationFrame;
+  delete (globalThis as any).cancelAnimationFrame;
+  rafStub.mockClear();
+  cafStub.mockClear();
+});
 
 function createMockEngine(clock = 0) {
   return {
