@@ -454,22 +454,22 @@ interface SimEvent {
 | A3 | Dropped-by-restart should be a separate metric category | Discretionary Decisions | Low -- can be merged with 503 count later |
 | A4 | Vitest `environment: 'node'` is sufficient for pure TS engine tests | Standard Stack | Very low -- no DOM needed |
 
-## Open Questions
+## Open Questions (RESOLVED)
 
 1. **Event cancellation mechanism**
    - What we know: Pod restart needs to cancel pending PROBE_TIMEOUT events for that pod. PROBE_COMPLETE events for probes that timed out should be ignored.
    - What's unclear: Whether to use tombstone pattern (mark events, skip on pop) or explicit removal.
-   - Recommendation: Use tombstone pattern -- add a `cancelled` flag or generation counter on pods. When processing an event, check if the pod's generation matches the event's generation. Cheaper than O(n) queue scan for removal.
+   - RESOLVED: Use tombstone pattern -- add a `cancelled` flag or generation counter on pods. When processing an event, check if the pod's generation matches the event's generation. Cheaper than O(n) queue scan for removal. Implemented in Plan 03 Task 2 (engine.ts) via `event.generation !== pod.generation` check in processEvent().
 
 2. **Request arrival scheduling granularity at low RPS**
    - What we know: At 1 RPS, interval is 1000ms. At 0.5 RPS, interval is 2000ms.
    - What's unclear: Whether fractional RPS should be supported.
-   - Recommendation: Support any positive RPS. Use `Math.round(1000 / rps)` for interval. Floor to ensure at least 1ms interval.
+   - RESOLVED: Support any positive RPS. Use `Math.round(1000 / rps)` for interval. Floor to ensure at least 1ms interval via `Math.max(intervalMs, 1)`. Implemented in Plan 03 Task 2 (engine.ts) handleRequestArrival().
 
 3. **Snapshot creation cost at high speed**
    - What we know: At 100x speed, snapshot is created every RAF tick (~60 times/second). With 20 pods and 8 workers each, that's 160 worker objects per snapshot.
    - What's unclear: Whether creating fresh objects causes GC pressure.
-   - Recommendation: Start with simple object creation. Profile if needed. At <20 pods, GC pressure is negligible. [CITED: .planning/research/ARCHITECTURE.md -- "Plain object created fresh... At 60fps with <20 pods, object creation cost is negligible"]
+   - RESOLVED: Start with simple object creation. Profile if needed. At <20 pods, GC pressure is negligible. [CITED: .planning/research/ARCHITECTURE.md -- "Plain object created fresh... At 60fps with <20 pods, object creation cost is negligible"]. Implemented in Plan 03 Task 2 (engine.ts) getSnapshot() as plain object creation.
 
 ## Environment Availability
 
