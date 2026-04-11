@@ -62,12 +62,12 @@ Plans:
   2. User can pause, resume, and adjust speed (0.5x to 100x) mid-simulation and see the change take effect immediately
   3. User can press "stop requests" to set RPS to 0 and observe pods recovering
   4. Elapsed simulation time, current 503 count, and ready pod count are always visible during a running simulation
-**Plans**: TBD
+**Plans**: 2 plans
 **UI hint**: yes
 
 Plans:
-- [ ] 03-01: TBD
-- [ ] 03-02: TBD
+- [ ] 03-01-PLAN.md — Zustand store + parameter form components + App layout refactor
+- [ ] 03-02-PLAN.md — RequestProfileList + PlaybackControls + SpeedControl + StatusDisplay + final wiring
 
 ### Phase 4: Report
 **Goal**: After a simulation run, users get a summary report showing the critical failure timeline and recovery metrics
@@ -92,5 +92,5 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4
 |-------|----------------|--------|-----------|
 | 1. Simulation Engine | 0/3 | Planning complete | - |
 | 2. Visualization | 0/4 | Gap closure planned | - |
-| 3. Controls & Parameters | 0/2 | Not started | - |
+| 3. Controls & Parameters | 0/2 | Planning complete | - |
 | 4. Report | 0/1 | Not started | - |
