@@ -29,12 +29,12 @@ Decimal phases appear between their surrounding integers in numeric order.
   3. Health check probes consume worker slots and trigger pod restart/LB-removal when thresholds are exceeded (verifiable via test)
   4. Load balancer distributes requests only to READY pods and returns 503 when none are available (verifiable via test)
   5. Engine produces a snapshot object containing all pod states, worker occupancy, backlog levels, and cumulative metrics at any simulation tick
-**Plans**: TBD
+**Plans**: 3 plans
 
 Plans:
-- [ ] 01-01: TBD
-- [ ] 01-02: TBD
-- [ ] 01-03: TBD
+- [ ] 01-01-PLAN.md — Project scaffold + types + priority queue + RNG
+- [ ] 01-02-PLAN.md — Pod state machine + Load Balancer
+- [ ] 01-03-PLAN.md — MetricsCollector + SimulationEngine + integration tests
 
 ### Phase 2: Visualization
 **Goal**: Users can watch the simulation unfold visually -- pod states rendered on Canvas and metrics plotted as time-series charts in real time
@@ -89,7 +89,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Simulation Engine | 0/3 | Not started | - |
+| 1. Simulation Engine | 0/3 | Planning complete | - |
 | 2. Visualization | 0/2 | Not started | - |
 | 3. Controls & Parameters | 0/2 | Not started | - |
 | 4. Report | 0/1 | Not started | - |
