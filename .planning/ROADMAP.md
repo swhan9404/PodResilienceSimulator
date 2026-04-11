@@ -51,7 +51,7 @@ Plans:
 - [x] 02-01-PLAN.md — Deps + Tailwind/uPlot setup + PodRenderer + PodCanvas
 - [x] 02-02-PLAN.md — MetricsChartManager + MetricsCharts (4 uPlot charts)
 - [x] 02-03-PLAN.md — SimulationLoop + useSimulation hook + App.tsx integration
-- [ ] 02-04-PLAN.md — Gap closure: fix Phase 1 TS errors blocking npm run build
+- [x] 02-04-PLAN.md — Gap closure: fix Phase 1 TS errors blocking npm run build
 
 ### Phase 3: Controls & Parameters
 **Goal**: Users can configure all simulation parameters and control the simulation lifecycle (start, pause, speed, stop requests) through a React UI
