@@ -77,11 +77,12 @@ Plans:
   1. Report shows the timeline of degradation: first readiness failure, first liveness failure (restart), and total service down (all pods not ready)
   2. Report shows recovery time from request stop to full pod readiness restoration
   3. Report shows per-profile average response time and overall 503 count/ratio
-**Plans**: TBD
+**Plans**: 2 plans
 **UI hint**: yes
 
 Plans:
-- [ ] 04-01: TBD
+- [ ] 04-01-PLAN.md — CriticalEventTracker + engine integration + store recovery detection + ReportData
+- [ ] 04-02-PLAN.md — Report UI components (Timeline, Cards, Table) + App.tsx conditional rendering
 
 ## Progress
 
@@ -93,4 +94,4 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4
 | 1. Simulation Engine | 0/3 | Planning complete | - |
 | 2. Visualization | 0/4 | Gap closure planned | - |
 | 3. Controls & Parameters | 0/2 | Planning complete | - |
-| 4. Report | 0/1 | Not started | - |
+| 4. Report | 0/2 | Planning complete | - |
