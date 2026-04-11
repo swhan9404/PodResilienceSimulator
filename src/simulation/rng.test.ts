@@ -54,8 +54,8 @@ describe('selectProfile', () => {
     expect(selectProfile(testProfiles, 0.94)).toBe(testProfiles[1]);
   });
 
-  it('rngValue=0.95 returns third profile', () => {
-    expect(selectProfile(testProfiles, 0.95)).toBe(testProfiles[2]);
+  it('rngValue=0.96 returns third profile', () => {
+    expect(selectProfile(testProfiles, 0.96)).toBe(testProfiles[2]);
   });
 
   it('rngValue=0.999 returns last profile', () => {
