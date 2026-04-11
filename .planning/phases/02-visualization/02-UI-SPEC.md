@@ -55,7 +55,7 @@ Exceptions: none
 | Pod card border width | 3px | State-colored border |
 | Pod card border radius | 4px | Subtle rounding |
 | Pod label height | 16px | Space for "Pod 0" label above worker grid |
-| Backlog label height | 14px | Space for "BL: 7/10" text below worker grid |
+| Backlog label height | 12px | Space for "BL: 7/10" text below worker grid |
 
 Source: Claude's discretion per D-01 context decision.
 
@@ -65,17 +65,18 @@ Source: Claude's discretion per D-01 context decision.
 
 | Role | Size | Weight | Line Height | Context |
 |------|------|--------|-------------|---------|
-| Body | 14px | 400 (regular) | 1.5 | Tailwind prose if any DOM text appears |
-| Label | 12px | 600 (semibold) | 1.0 | Canvas: pod labels ("Pod 0"), backlog text ("BL: 7/10"), chart axis labels |
 | Heading | 16px | 600 (semibold) | 1.2 | Canvas: section headings if needed, chart titles |
+| Body | 14px | 400 (regular) | 1.5 | Tailwind prose if any DOM text appears, chart axis labels |
+| Label | 12px | 600 (semibold) | 1.0 | Canvas: pod labels ("Pod 0") |
+| Micro | 10px | 400 (regular) | 1.0 | Canvas: backlog text ("BL: 7/10"), probe glyphs |
+
+4 sizes declared (10, 12, 14, 16) with 2 weights (400, 600).
 
 **Canvas font declarations (used in `ctx.font`):**
 - Pod label: `600 12px system-ui, sans-serif`
-- Backlog text: `400 11px system-ui, sans-serif`
+- Backlog text: `400 10px system-ui, sans-serif`
 - Probe glyphs: `400 10px system-ui, sans-serif`
 - Chart titles (uPlot): handled by uPlot options, 14px weight 600
-
-**Note:** Phase 2 has minimal DOM text. Typography is primarily expressed inside Canvas and uPlot. Only 3 sizes declared (12, 14, 16) with 2 weights (400, 600).
 
 ---
 
@@ -151,6 +152,8 @@ Accent reserved for: Not applicable in Phase 2 (no interactive DOM elements). Th
 
 ### Overall Page Structure (per D-12, D-13, D-14)
 
+Primary focal point: Pod Canvas Grid -- occupies the top third of the viewport and is the first element the eye encounters.
+
 ```
 +------------------------------------------------------------------+
 |                    Page (min-width: 1280px)                       |
@@ -195,7 +198,7 @@ Gap between pod cards: 16px (md token).
 | [W][W][W][W]    (worker grid) |  <- 20x20 cells, 4px gap
 | [W][W][W][W]                  |
 |-------------------------------|
-| BL: 3/10        (backlog text)|  <- 11px regular, left-aligned
+| BL: 3/10        (backlog text)|  <- 10px regular, left-aligned
 |-------------------------------|
 | L: +++x  R: +++x (probes)    |  <- 10px, L=liveness R=readiness
 +-------------------------------+
