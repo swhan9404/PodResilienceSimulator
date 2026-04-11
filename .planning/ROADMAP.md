@@ -81,8 +81,8 @@ Plans:
 **UI hint**: yes
 
 Plans:
-- [ ] 04-01-PLAN.md — CriticalEventTracker + engine integration + store recovery detection + ReportData
-- [ ] 04-02-PLAN.md — Report UI components (Timeline, Cards, Table) + App.tsx conditional rendering
+- [x] 04-01-PLAN.md — CriticalEventTracker + engine integration + store recovery detection + ReportData
+- [x] 04-02-PLAN.md — Report UI components (Timeline, Cards, Table) + App.tsx conditional rendering
 
 ## Progress
 
