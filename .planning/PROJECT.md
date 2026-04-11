@@ -39,6 +39,11 @@ EKS 환경에서 동기(synchronous) worker 기반 Pod들이 느린 요청(slow 
 - 다중 서비스/마이크로서비스 토폴로지 — 단일 서비스 Pod 집합만 모델링
 - 비동기 worker 모델 — 동기 worker만 대상
 
+## Current State
+
+**v1.0 MVP shipped 2026-04-11.** ~4,967 LOC TypeScript/React, 137 tests passing.
+Tech stack: React 19 + TypeScript + Vite 8 + Zustand 5 + uPlot + Canvas 2D + Tailwind CSS 4.
+
 ## Context
 
 - EKS 환경에서 동기 worker (gunicorn sync 등) 기반 서비스 운영 시, slow request로 인한 서비스 장애를 사전에 시뮬레이션하려는 목적
@@ -78,4 +83,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-04-11 after Phase 4 completion — Post-simulation report with degradation timeline, summary cards, per-profile response times. All v1.0 milestone requirements validated.*
+*Last updated: 2026-04-11 after v1.0 milestone*
