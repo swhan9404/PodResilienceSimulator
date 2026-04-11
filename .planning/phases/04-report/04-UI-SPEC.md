@@ -54,9 +54,9 @@ Exceptions: Timeline left padding is 32px (xl) to accommodate the vertical line 
 | Body / Table cell | 14px | 400 (regular) | 1.5 | `text-sm font-normal` |
 | Label / Caption | 12px | 600 (semibold) | 1.5 | `text-xs font-semibold` |
 | Section Heading | 16px | 600 (semibold) | 1.2 | `text-base font-semibold` |
-| Stat Value (display) | 28px | 700 (bold) | 1.2 | `text-[28px] font-bold` |
+| Stat Value (display) | 28px | 600 (semibold) | 1.2 | `text-[28px] font-semibold` |
 
-**Rationale:** Report uses a larger display size (28px) for summary stat cards to create strong visual hierarchy -- these are the "big numbers" the user came to see. 700 weight for stat values differentiates them from the 600-weight headings used elsewhere. All other roles match the Phase 3 typography contract.
+**Weights used: 2 (400 regular, 600 semibold).** The stat value display at 28px achieves sufficient visual differentiation through size alone -- no additional weight distinction needed beyond semibold.
 
 ---
 
@@ -96,6 +96,20 @@ Exceptions: Timeline left padding is 32px (xl) to accommodate the vertical line 
 Each summary card has a 3px top border in its accent color. Card body uses `var(--bg-secondary)` background.
 
 Accent reserved for: **Timeline event markers**, **summary card top borders**. Nothing else in this phase.
+
+### Destructive Color
+
+The Reset button's destructive text color is inherited from the Phase 3 PlaybackControls component. No new color token is introduced in this phase -- the existing `text-red-500` (or equivalent) applied by Phase 3 carries forward unchanged.
+
+---
+
+## Visual Hierarchy
+
+**Primary focal point:** SummaryCards stat values (28px semibold). These are the "big numbers" the user came to see -- recovery time, error rate, total requests.
+
+**Secondary focal point:** DegradationTimeline event labels (14px semibold) with colored markers telling the degradation story chronologically.
+
+**Supporting information:** ProfileTable (14px regular) and card subtitles (12px regular) provide additional detail on demand.
 
 ---
 
@@ -175,7 +189,7 @@ A grid of large-number cards showing key metrics.
 | Element | Size | Weight | Color |
 |---------|------|--------|-------|
 | Label (top) | 12px | 600 (semibold) | `var(--text-secondary)` |
-| Value (center) | 28px | 700 (bold) | `var(--text-primary)` |
+| Value (center) | 28px | 600 (semibold) | `var(--text-primary)` |
 | Subtitle (bottom) | 12px | 400 (regular) | `var(--text-secondary)` |
 | Vertical spacing | 4px between label/value, 4px between value/subtitle |
 
@@ -190,7 +204,7 @@ A table showing per-profile average response times.
 | Table background | `var(--bg-secondary)` |
 | Table border | 1px `var(--border-color)`, 8px border-radius |
 | Header row bg | `var(--bg-secondary)` (same as body in dark mode; slightly differentiated by text weight) |
-| Cell padding | 12px horizontal, 8px vertical |
+| Cell padding | 16px horizontal, 8px vertical (`px-4 py-2`) |
 | Text alignment | Name column left-aligned, numeric columns right-aligned |
 
 **Table Columns:**
@@ -313,7 +327,7 @@ The only actionable element is the Reset button in the left panel (existing comp
 | Empty state heading | Not applicable -- report only appears with data (D-02) |
 | Empty state body | Not applicable |
 | Error state | Not applicable -- report data is computed from in-memory engine state, no I/O |
-| Destructive: Reset | No confirmation dialog (same as Phase 3 -- Reset is low-cost). Immediate return to idle. |
+| Destructive: Reset | "Reset" -- single-word CTA per D-03 locked decision. No confirmation dialog (same as Phase 3 -- Reset is low-cost, immediate return to idle). The verb alone is sufficient because the button context in PlaybackControls makes the action unambiguous, and the operation is easily reversible by re-running the simulation. |
 
 ### Number Formatting
 
