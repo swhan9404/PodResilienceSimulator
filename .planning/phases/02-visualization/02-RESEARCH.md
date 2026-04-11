@@ -433,19 +433,19 @@ export const DEMO_CONFIG: SimulationConfig = {
 | A2 | uplot-react resetScales=false prop works correctly for streaming | Pattern 2 | If broken, fall back to direct uPlot instance management via ref -- medium risk |
 | A3 | Tailwind v4 CSS-first `@import "tailwindcss"` works without config file | Architecture | If not, add postcss.config or revert to v3 config pattern -- low risk |
 
-## Open Questions
+## Open Questions (RESOLVED)
 
-1. **uPlot X-axis as Relative Time**
+1. **uPlot X-axis as Relative Time** -- RESOLVED: Plan 02-02 Task 2 uses custom axis `values` formatter (`vals.map(v => \`${Math.round(v)}s\`)`) on all 4 charts, rendering relative seconds directly. uPlot never attempts date parsing.
    - What we know: uPlot is designed for Unix timestamps. Our simulation uses relative time starting from 0.
    - What's unclear: Whether uPlot auto-formats relative seconds correctly or if it tries to parse them as dates.
    - Recommendation: Use custom axis `values` formatter that renders `${seconds}s`. This sidesteps the issue entirely. Low risk.
 
-2. **MET-04 Response Time Chart: Multi-Series for Dynamic Profiles**
+2. **MET-04 Response Time Chart: Multi-Series for Dynamic Profiles** -- RESOLVED: Phase 2 uses hardcoded DEMO_CONFIG with fixed 2 profiles (normal, slow) per D-11. Plan 02-02 Task 2 builds response time series dynamically from `profileNames`/`profileColors` props, but profile count is fixed at chart creation time. No dynamic recreation needed in Phase 2.
    - What we know: Response time chart needs one line per request profile. Demo config has 2 profiles (normal, slow).
    - What's unclear: uPlot series must be defined at chart creation. If profile count changes, chart must be recreated.
    - Recommendation: For Phase 2 (hardcoded config), series count is fixed. Define series at chart creation. Phase 3 can handle dynamic profiles if needed.
 
-3. **Dark Mode Detection for Canvas**
+3. **Dark Mode Detection for Canvas** -- RESOLVED: Plan 02-01 PodCanvas uses `window.matchMedia('(prefers-color-scheme: dark)')` at mount time and listens for changes. Plan 02-03 useSimulation hook passes `isDark` to SimulationLoop via `loop.setDarkMode()`, which forwards it to `PodRenderer.draw()`.
    - What we know: UI-SPEC defines light/dark color variants for Canvas elements.
    - What's unclear: How to detect dark mode from within Canvas renderer (no CSS access).
    - Recommendation: Use `window.matchMedia('(prefers-color-scheme: dark)')` at mount time and listen for changes. Pass a `theme` parameter to PodRenderer.
