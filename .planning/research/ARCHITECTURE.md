@@ -1,499 +1,459 @@
-# Architecture Patterns
+# Architecture Research
 
-**Domain:** Browser-based discrete event simulation with real-time visualization
+**Domain:** Statistical optimizer integration into existing React simulation SPA
 **Researched:** 2026-04-11
-**Confidence:** HIGH (discrete event simulation and Canvas/React integration are mature, well-documented patterns)
+**Confidence:** HIGH
 
-## Recommended Architecture
+## Standard Architecture
 
-### High-Level Overview
+### System Overview
 
 ```
-+-----------------------+       snapshot (readonly)       +--------------------+
-|   Simulation Engine   | -----------------------------> |   React UI Layer   |
-|   (pure TypeScript)   |                                |                    |
-|                       |                                | ParameterPanel     |
-| - EventQueue (heap)   |   user actions (start/stop/    | Controls           |
-| - Pod state machines  |    config changes)              | ResultReport       |
-| - LoadBalancer        | <------------------------------ |                    |
-| - MetricsCollector    |                                +--------------------+
-|                       |                                         |
-+-----------+-----------+                                         |
-            |                                                     |
-            | snapshot ref                                        |
-            v                                                     v
-+--------------------+                                +--------------------+
-| Canvas Renderer    |                                | Chart Renderer     |
-| (imperative draw)  |                                | (uPlot 1.6.32)    |
-| Pod grid, workers, |                                | Time-series charts |
-| backlog, probes    |                                | for metrics        |
-+--------------------+                                +--------------------+
++---------------------------------------------------------------------+
+|                          Browser (SPA)                              |
++-----------------------------+---------------------------------------+
+|   Tab: Simulator (v1.0)     |   Tab: Optimizer (NEW - v1.1)        |
+|                             |                                       |
+|  +----------------------+   |  +--------------------------------+   |
+|  |   ControlPanel       |   |  |   OptimizerPanel (NEW)         |   |
+|  |   (params + ctrl)    |   |  |   TrafficInput + SweepBounds   |   |
+|  +----------+-----------+   |  +---------------+----------------+   |
+|             |               |                  |                    |
+|  +----------v-----------+   |  +---------------v----------------+   |
+|  |  useSimulationStore  |   |  |  useOptimizerStore (NEW)       |   |
+|  |  (Zustand)           |   |  |  (Zustand, separate slice)     |   |
+|  +----------+-----------+   |  +---------------+----------------+   |
+|             |               |                  |                    |
+|  +----------v-----------+   |  +---------------v----------------+   |
+|  |   SimulationEngine   |   |  |   Optimizer Math Engine (NEW)  |   |
+|  |   (discrete event,   |   |  |   pure TS functions (no class) |   |
+|  |    plain TS class)   |   |  |   M/M/c/K + probe model        |   |
+|  +----------+-----------+   |  +---------------+----------------+   |
+|             |               |                  |                    |
+|  +----------v-----------+   |  +---------------v----------------+   |
+|  | SimulationLoop       |   |  |   StabilityChart (uPlot)       |   |
+|  | PodCanvas (Canvas 2D)|   |  |   KneePoint overlay (Canvas)   |   |
+|  | MetricsCharts (uPlot)|   |  |   RecommendationCard           |   |
+|  +----------------------+   |  +--------------------------------+   |
++-----------------------------+---------------------------------------+
+|            Shared: src/simulation/types.ts                         |
+|   SimulationConfig, RequestProfile, ProbeConfig                    |
+|   Imported read-only by optimizer -- never modified by it          |
++---------------------------------------------------------------------+
 ```
 
-**Key principle:** The simulation engine is completely framework-agnostic. It has zero React imports, zero DOM access, zero Canvas access. It is a pure state machine that advances simulation time and produces snapshots. This separation is the single most important architectural decision.
+**Key principle for integration:** The optimizer is architecturally parallel to the simulator -- it has its own store, its own math engine, and its own UI components. The only coupling point is `src/simulation/types.ts`, which is imported read-only. No cross-tab state, no cross-tab function calls.
 
 ### Component Boundaries
 
-| Component | Responsibility | Owns | Communicates With |
-|-----------|---------------|------|-------------------|
-| **SimulationEngine** | Advances simulation time, processes events, maintains world state | EventQueue, simulation clock, Pod array, LoadBalancer, MetricsCollector | Produces `SimulationSnapshot`; receives `SimulationConfig` and commands |
-| **EventQueue** | Min-heap priority queue ordered by event time | Event array | Only accessed by SimulationEngine |
-| **Pod** | State machine (READY/NOT_READY/RESTARTING), manages workers and backlog | Worker slots, backlog queue, probe state counters | Receives events from engine, returns state |
-| **Worker** | Tracks single worker slot occupancy | Current request (or null), busy-until timestamp | Owned by Pod, no external communication |
-| **LoadBalancer** | Distributes requests to ready pods via strategy pattern | Strategy instance, round-robin index | Reads pod ready-state, returns target pod |
-| **MetricsCollector** | Aggregates time-series data from simulation events | Sampled metric arrays (worker usage, 503 count, response times, etc.) | Receives events from engine; snapshot read by chart renderer |
-| **SimulationLoop** | The `requestAnimationFrame` bridge between engine and renderers | RAF handle, speed multiplier, wall-clock tracking | Calls engine.step(), triggers Canvas redraw and React snapshot update |
-| **CanvasRenderer** | Draws pod grid, workers, backlog bars, probe indicators | Canvas 2D context, layout calculations | Reads `SimulationSnapshot`, writes to canvas element |
-| **ChartRenderer** | Draws time-series metrics charts via uPlot | uPlot instances, data buffers | Reads `MetricsSnapshot` from MetricsCollector |
-| **React Components** | Parameter inputs, controls, result report | Form state (Zustand 5.0.12), UI state | Sends config/commands to engine; reads snapshot for display values |
-| **useSimulation hook** | Bridges React lifecycle with SimulationLoop | Engine ref, snapshot state, RAF lifecycle | Creates/destroys engine, exposes snapshot as React state |
+| Component | Responsibility | Status |
+|-----------|---------------|--------|
+| `App.tsx` | Tab state holder; conditional render of SimulatorView vs OptimizerView | MODIFY |
+| `ControlPanel` | Simulator params + playback controls | UNCHANGED |
+| `useSimulationStore` | Zustand store for simulator UI + engine refs | UNCHANGED |
+| `SimulationEngine` | Discrete-event simulation runtime (Pod, Worker, EventQueue) | UNCHANGED |
+| `SimulationLoop` + renderers | RAF bridge, Canvas draw, uPlot update | UNCHANGED |
+| `src/simulation/types.ts` | Shared domain types: SimulationConfig, RequestProfile, ProbeConfig | UNCHANGED (imported read-only) |
+| `OptimizerPanel` | Input form: traffic params, probe config, sweep bounds | NEW |
+| `useOptimizerStore` | Zustand store: optimizer input, sweep results, selected recommendation | NEW |
+| `queueing.ts` | Pure functions: Erlang C, M/M/c/K steady-state, blocking probability | NEW |
+| `probeModel.ts` | Pure functions: probe-adjusted effective lambda and mu per pod | NEW |
+| `sweep.ts` | Config space sweep over workers/pods/backlog, returns SweepPoint[] | NEW |
+| `kneePoint.ts` | Kneedle algorithm: find elbow point on cost-vs-stability curve | NEW |
+| `StabilityChart` | uPlot line chart: total workers (cost) vs P_block (stability) | NEW |
+| `RecommendationCard` | Display recommended config at knee point with metrics summary | NEW |
+| `OptimizerView` | Top-level optimizer tab layout: panel + chart + recommendation | NEW |
 
-### Data Flow
-
-**Direction is strictly one-way for simulation data, with a narrow command channel back:**
+## Recommended Project Structure
 
 ```
-1. User sets parameters in React UI (stored in Zustand)
-   |
-   v
-2. useSimulation hook creates SimulationEngine with config
-   |
-   v
-3. User clicks Start -> SimulationLoop begins
-   |
-   v
-4. Each animation frame:
-   a. SimulationLoop reads wall-clock delta, multiplies by speed
-   b. Calls engine.step(simulationDeltaMs)
-   c. Engine processes all events in queue up to new clock time
-   d. Engine produces SimulationSnapshot (immutable object)
-   e. SimulationLoop passes snapshot to CanvasRenderer.draw(snapshot)
-   f. SimulationLoop throttled-updates React state with snapshot (max 10-20Hz for React)
-   g. MetricsCollector samples are passed to ChartRenderer (uPlot)
-   |
-   v
-5. React re-renders: Controls show elapsed time, 503 count, ready pods
-   Canvas re-renders: Pod grid visualization (60fps)
-   Charts re-render: uPlot time-series graphs (10-30fps is sufficient)
+src/
++-- simulation/              # Existing -- simulation engine (ALL UNCHANGED)
+|   +-- types.ts             # Shared domain types: imported by optimizer too
+|   +-- engine.ts
+|   +-- pod.ts
+|   +-- load-balancer.ts
+|   +-- metrics.ts
+|   +-- priority-queue.ts
+|   +-- rng.ts
+|   +-- CriticalEventTracker.ts
+|   +-- *.test.ts
++-- optimizer/               # NEW -- math engine, isolated module
+|   +-- types.ts             # OptimizerInput, OptimizerResult, SweepPoint
+|   +-- queueing.ts          # M/M/c/K formulas as pure functions
+|   +-- probeModel.ts        # Probe worker contention: effective lambda, mu
+|   +-- sweep.ts             # Config space sweep
+|   +-- kneePoint.ts         # Kneedle knee-point detection
+|   +-- queueing.test.ts     # Unit tests against known M/M/c reference values
+|   +-- probeModel.test.ts
+|   +-- sweep.test.ts
++-- store/
+|   +-- useSimulationStore.ts  # Existing -- unchanged
+|   +-- useOptimizerStore.ts   # NEW -- optimizer input + result state
++-- components/              # Existing simulator UI -- ALL UNCHANGED
+|   +-- ControlPanel.tsx
+|   +-- ClusterParams.tsx
+|   +-- TrafficParams.tsx
+|   +-- ...
++-- optimizer-ui/            # NEW -- optimizer UI components
+|   +-- OptimizerPanel.tsx   # Left sidebar: input form
+|   +-- StabilityChart.tsx   # uPlot chart wired to sweep results
+|   +-- RecommendationCard.tsx
+|   +-- OptimizerView.tsx    # Composes panel + chart + recommendation
++-- visualization/           # Existing visualization layer -- ALL UNCHANGED
+|   +-- PodCanvas.tsx
+|   +-- MetricsCharts.tsx
+|   +-- SimulationLoop.ts
+|   +-- ...
++-- App.tsx                  # MODIFY: add tab state + TabBar + conditional render
++-- main.tsx                 # Unchanged
++-- index.css                # Unchanged
 ```
 
-**Critical: React state updates are throttled.** The simulation may advance thousands of events per frame at 100x speed. Canvas draws every frame (60fps). But React re-renders are expensive and only needed for text displays (elapsed time, counters), so they are throttled to ~10-20Hz.
+### Structure Rationale
 
-## Core Component Designs
+- **`src/optimizer/`:** All math logic isolated, no React imports, fully testable without mounting components. Mirrors the `src/simulation/` pattern where the engine is framework-agnostic. This isolation also enables future Web Worker migration without changing the math code.
+- **`src/optimizer-ui/`:** UI components for the optimizer tab, separate from `src/components/` which owns simulator UI. Clean boundary: no cross-imports between the two UI subtrees.
+- **`src/simulation/types.ts` as shared types:** The existing types file defines `SimulationConfig`, `RequestProfile`, and `ProbeConfig`. The optimizer input overlaps these fields exactly. Import directly from the canonical source -- no duplication, no separate shared package needed at this scale (single-package SPA).
+- **`src/store/useOptimizerStore.ts`:** Separate Zustand slice keeps optimizer state isolated from simulation. No shared mutable state between tabs; no cross-store subscriptions.
 
-### 1. SimulationEngine -- Discrete Event Simulation Core
+## Architectural Patterns
 
-**Pattern: Event-driven simulation with a min-heap priority queue.**
+### Pattern 1: State-Driven Tab Navigation (No React Router)
 
-This is the textbook DES pattern, universally used in network simulators, queuing theory tools, and game engines.
+**What:** A single `activeTab: 'simulator' | 'optimizer'` field in App-level `useState` controls which view renders. No routing library.
 
+**When to use:** This project is a two-tab tool with no deep links, no bookmarkable optimizer states, and no browser back/forward within the optimizer. React Router's value-add (URL persistence, nested layouts, code splitting by route) is irrelevant here.
+
+**Trade-offs:** No URL persistence of active tab. Acceptable: optimizer starts fresh each session and its inputs are transient parameters the user adjusts interactively.
+
+**Static hosting compatibility:** Pure state-based switching works identically on GitHub Pages, S3, and local file serve. React Router `BrowserRouter` requires server-side URL rewriting which these hosts do not provide. `HashRouter` would work but adds ~50KB for no benefit.
+
+**Example:**
 ```typescript
-// Core types
-interface SimEvent {
-  time: number;        // simulation time in ms when this event fires
-  type: EventType;
-  payload: EventPayload;
-}
+// App.tsx
+type ActiveTab = 'simulator' | 'optimizer';
 
-type EventType =
-  | 'REQUEST_ARRIVAL'
-  | 'REQUEST_COMPLETE'
-  | 'LIVENESS_PROBE'
-  | 'READINESS_PROBE'
-  | 'PROBE_TIMEOUT'
-  | 'POD_RESTART'
-  | 'POD_INIT_COMPLETE';
+function App() {
+  const [activeTab, setActiveTab] = useState<ActiveTab>('simulator');
 
-class SimulationEngine {
-  private clock: number = 0;
-  private eventQueue: MinHeap<SimEvent>;
-  private pods: Pod[];
-  private loadBalancer: LoadBalancer;
-  private metrics: MetricsCollector;
-  private config: SimulationConfig;
-  private running: boolean = false;
-
-  // Advance simulation by deltaMs of simulation time
-  step(deltaMs: number): void {
-    const targetTime = this.clock + deltaMs;
-
-    // Process ALL events up to targetTime
-    while (!this.eventQueue.isEmpty() && this.eventQueue.peek().time <= targetTime) {
-      const event = this.eventQueue.pop();
-      this.clock = event.time;
-      this.processEvent(event);
-    }
-
-    this.clock = targetTime;
-  }
-
-  // Returns readonly snapshot of current state for rendering
-  getSnapshot(): SimulationSnapshot { ... }
+  return (
+    <div className="min-h-screen bg-[var(--bg-dominant)] flex flex-col">
+      <TabBar activeTab={activeTab} onSelect={setActiveTab} />
+      {activeTab === 'simulator' ? <SimulatorView /> : <OptimizerView />}
+    </div>
+  );
 }
 ```
 
-**Why a min-heap and not a sorted array or linked list:**
-- Insert: O(log n) vs O(n) for sorted array
-- Pop min: O(log n) vs O(1) for sorted array, but insert dominates
-- Typical queue size: 100-500 events (pods * probes + active requests + arrivals). A heap is ideal at this scale.
+`SimulatorView` is a thin wrapper that renders the existing `ControlPanel` + canvas/charts layout. No changes to those components. `OptimizerView` renders the new optimizer components.
 
-**Step granularity:** The engine does NOT step in fixed time increments. It jumps from event to event. The `step(deltaMs)` method processes all events whose time falls within `[clock, clock + deltaMs]`. This is critical for correctness -- at 100x speed, a single frame might advance 1.6 seconds of simulation time, and hundreds of events could fire.
+Zustand is NOT used for tab state. `useState` in App is sufficient -- tab selection is not needed by deeply nested components; it only controls top-level view switching.
 
-### 2. Pod State Machine
+### Pattern 2: Optimizer Engine as Pure Functions (Not a Class)
 
+**What:** The optimizer math is a pipeline of pure functions, not a stateful class like `SimulationEngine`. Each function takes inputs and returns outputs with no side effects. The Zustand store calls functions synchronously on demand and stores results.
+
+**When to use:** The math model has no state between calls. M/M/c/K formulas are stateless computations. A class would add lifecycle management (constructor, reset, teardown) for zero benefit. Pure functions are also trivially testable: no mocks, no setup, just inputs and outputs.
+
+**Trade-offs:** Functions cannot be incrementally updated (each call recomputes from scratch). Given sweep completes in <10ms, this is not a concern.
+
+**Example:**
 ```typescript
-enum PodState {
-  READY = 'READY',
-  NOT_READY = 'NOT_READY',
-  RESTARTING = 'RESTARTING',
+// optimizer/queueing.ts
+
+// Erlang C: probability an arriving request waits (all workers busy, queue infinite)
+export function erlangCWaitProb(lambda: number, mu: number, c: number): number { ... }
+
+// M/M/c/K: blocking probability given finite queue capacity K = c + maxBacklog
+// Uses log-space arithmetic to avoid factorial overflow for large c or K
+export function mmckBlockingProb(
+  lambda: number, mu: number, c: number, K: number
+): number { ... }
+
+// Expected queue length (Little's Law: L = lambda * W)
+export function meanQueueLength(lambda: number, mu: number, c: number): number { ... }
+
+// optimizer/probeModel.ts
+
+// Effective arrival rate per pod including probe traffic
+export function effectiveLambda(
+  rps: number,
+  podCount: number,
+  livenessPeriodS: number,
+  readinessPeriodS: number
+): number {
+  const probeRate = (1 / livenessPeriodS) + (1 / readinessPeriodS);
+  return (rps / podCount) + probeRate;
 }
 
-class Pod {
-  id: number;
-  state: PodState;
-  workers: (ActiveRequest | null)[];   // fixed-size array, null = idle
-  backlog: ActiveRequest[];            // FIFO queue, max length = maxBacklogPerPod
-  livenessCounter: ProbeCounter;       // tracks consecutive success/failure
-  readinessCounter: ProbeCounter;      // tracks consecutive success/failure
-
-  // Try to accept a request (user request or probe)
-  tryAccept(request: SimRequest, currentTime: number): AcceptResult {
-    // 1. Find idle worker -> assign immediately
-    // 2. No idle worker, backlog not full -> enqueue
-    // 3. Backlog full -> reject (503 for requests, immediate failure for probes)
-  }
-
-  // Called when a worker finishes its request
-  completeRequest(workerIndex: number, currentTime: number): ActiveRequest | null {
-    // 1. Free the worker
-    // 2. If backlog non-empty, dequeue and assign to freed worker
-    // 3. Return dequeued request (so engine can schedule its completion)
-  }
-}
+// Effective service rate: harmonic mean weighted by request profile ratios
+// Probe latency is probe timeout (worst case = full timeout when worker is blocked)
+export function effectiveMu(
+  profiles: RequestProfile[],
+  probeTimeoutSeconds: number
+): number { ... }
 ```
 
-**State transitions are event-driven, not polled.** The engine schedules probe events at the correct times. When a probe fires, the Pod evaluates the result and updates counters. Threshold checks happen inside the event handler, not in a polling loop.
+### Pattern 3: Config Sweep + Knee Point Detection
 
-### 3. SimulationLoop -- The RAF Bridge
+**What:** The optimizer sweeps a bounded parameter space computing blocking probability for each combination. Results feed a 2D curve (total worker cost vs P_block) from which a knee point is extracted using the Kneedle algorithm.
 
-This is the component that connects wall-clock time to simulation time and orchestrates rendering.
+**When to use:** This is the optimizer's core value. Without a sweep, no curve. Without a knee point, no recommendation.
 
+**Computational cost:** With ranges workers=1..20, pods=1..20, backlog=0..50, the sweep is 20,000 evaluations. Each evaluation is O(K) arithmetic where K = workers + backlog <= 70. Total: ~1.4M arithmetic operations. Completes in <10ms on a modern browser main thread. No Web Worker needed for this scale.
+
+**Knee point algorithm (Kneedle):** Normalize the cost-vs-P_block curve to [0,1]x[0,1]. Find the index of maximum perpendicular distance from the diagonal line connecting first and last points. O(n) scan. Simple to implement and well-understood.
+
+**Example:**
 ```typescript
-class SimulationLoop {
-  private engine: SimulationEngine;
-  private canvasRenderer: CanvasRenderer;
-  private chartRenderer: ChartRenderer;
-  private onSnapshotUpdate: (snapshot: SimulationSnapshot) => void;
-  private speed: number = 1;
-  private lastTimestamp: number = 0;
-  private rafHandle: number = 0;
-  private reactThrottleMs: number = 50; // ~20Hz for React updates
-  private lastReactUpdate: number = 0;
-
-  private tick = (timestamp: number) => {
-    const wallDelta = timestamp - this.lastTimestamp;
-    this.lastTimestamp = timestamp;
-
-    // Clamp wall delta to avoid spiral of death after tab switch
-    const clampedDelta = Math.min(wallDelta, 100); // max 100ms wall time per frame
-
-    const simDelta = clampedDelta * this.speed;
-    this.engine.step(simDelta);
-
-    const snapshot = this.engine.getSnapshot();
-
-    // Canvas: every frame (60fps)
-    this.canvasRenderer.draw(snapshot);
-
-    // Charts: every frame or throttled (uPlot handles this efficiently)
-    this.chartRenderer.update(snapshot.metrics);
-
-    // React state: throttled
-    if (timestamp - this.lastReactUpdate > this.reactThrottleMs) {
-      this.onSnapshotUpdate(snapshot);
-      this.lastReactUpdate = timestamp;
-    }
-
-    this.rafHandle = requestAnimationFrame(this.tick);
-  };
+// optimizer/sweep.ts
+export interface SweepPoint {
+  workersPerPod: number;
+  podCount: number;
+  maxBacklog: number;
+  pBlock: number;           // M/M/c/K blocking probability
+  totalWorkers: number;     // workersPerPod * podCount (cost proxy)
 }
-```
 
-**The "spiral of death" clamp is critical.** If the user switches tabs and comes back, `wallDelta` could be several seconds. Without clamping, the engine would try to process millions of events in one frame, freezing the browser. Clamping to 100ms means at 100x speed, the simulation advances at most 10 seconds per frame -- still fast, but manageable.
-
-### 4. CanvasRenderer -- Imperative Drawing
-
-**Pattern: Stateless renderer that takes a snapshot and draws the entire frame.**
-
-```typescript
-class CanvasRenderer {
-  private ctx: CanvasRenderingContext2D;
-  private layout: LayoutCalculator;
-
-  draw(snapshot: SimulationSnapshot): void {
-    this.ctx.clearRect(0, 0, this.width, this.height);
-    this.layout.calculate(snapshot.pods.length);
-
-    for (const pod of snapshot.pods) {
-      this.drawPod(pod);
-    }
-
-    this.drawSummaryBar(snapshot);
-  }
-
-  private drawPod(pod: PodSnapshot): void {
-    // Border color by state
-    // Worker bars with request color and progress
-    // Backlog bar with fill ratio
-    // Probe status indicators
-  }
-}
-```
-
-**Why full redraw, not dirty-region tracking:** For 5-20 pods with 4-8 workers each, a full Canvas clear + redraw at 60fps is trivially fast (<1ms on modern hardware). Dirty-region tracking adds complexity for zero performance benefit at this scale.
-
-### 5. React Integration via useSimulation Hook
-
-```typescript
-function useSimulation() {
-  const engineRef = useRef<SimulationEngine | null>(null);
-  const loopRef = useRef<SimulationLoop | null>(null);
-  const [snapshot, setSnapshot] = useState<SimulationSnapshot | null>(null);
-  const [phase, setPhase] = useState<'idle' | 'running' | 'paused' | 'finished'>('idle');
-
-  const start = useCallback((config: SimulationConfig) => {
-    const engine = new SimulationEngine(config);
-    engineRef.current = engine;
-    const loop = new SimulationLoop(engine, canvasRef, chartRef, (snap) => {
-      setSnapshot(snap);  // throttled by SimulationLoop
-    });
-    loopRef.current = loop;
-    loop.start();
-    setPhase('running');
-  }, []);
-
-  const pause = useCallback(() => { loopRef.current?.pause(); setPhase('paused'); }, []);
-  const resume = useCallback(() => { loopRef.current?.resume(); setPhase('running'); }, []);
-  const stopRequests = useCallback(() => { engineRef.current?.stopRequests(); }, []);
-  const setSpeed = useCallback((s: number) => { loopRef.current?.setSpeed(s); }, []);
-
-  useEffect(() => () => { loopRef.current?.stop(); }, []);
-
-  return { snapshot, phase, start, pause, resume, stopRequests, setSpeed };
-}
-```
-
-**Key decisions:**
-- **Engine lives in a ref, not in state.** The engine is a mutable object that changes thousands of times per second. Putting it in React state would cause catastrophic re-renders.
-- **Snapshot is the only React state from the simulation.** Set at a throttled rate (10-20Hz). Drives UI text updates.
-- **Canvas draws happen outside React.** The Canvas renderer is called imperatively from SimulationLoop.
-
-### 6. MetricsCollector -- Time-Series Aggregation
-
-```typescript
-class MetricsCollector {
-  private sampleIntervalMs: number = 1000; // 1 simulated second per sample
-  private lastSampleTime: number = 0;
-  private samples: MetricsSample[] = [];
-  private currentBucket: MetricsBucket;
-
-  record(event: MetricEvent): void {
-    this.currentBucket.accumulate(event);
-  }
-
-  maybeSample(currentTime: number): void {
-    if (currentTime - this.lastSampleTime >= this.sampleIntervalMs) {
-      this.samples.push(this.currentBucket.flush());
-      this.lastSampleTime = currentTime;
+export function sweepConfigs(input: OptimizerInput): SweepPoint[] {
+  const results: SweepPoint[] = [];
+  for (let w = input.workerRange.min; w <= input.workerRange.max; w++) {
+    for (let p = input.podRange.min; p <= input.podRange.max; p++) {
+      for (let b = input.backlogRange.min; b <= input.backlogRange.max; b++) {
+        const lambda = effectiveLambda(input.rps, p, ...);
+        const mu = effectiveMu(input.profiles, ...);
+        const pBlock = mmckBlockingProb(lambda, mu, w, w + b);
+        results.push({ workersPerPod: w, podCount: p, maxBacklog: b, pBlock, totalWorkers: w * p });
+      }
     }
   }
+  return results;
+}
 
-  getTimeSeries(): MetricsSample[] {
-    return this.samples;
-  }
+// optimizer/kneePoint.ts
+export function findKneePoint(curve: { x: number; y: number }[]): number {
+  // Kneedle: normalize, find index of max distance from diagonal
+  // Returns index into curve array
 }
 ```
 
-**Why sample at 1-second intervals:** At 100 RPS with 100x speed, the engine processes 10,000 events/second of wall time. Charting every event is wasteful. Sampling at 1-second simulation intervals gives smooth charts with bounded memory: a 5-minute simulation = 300 samples.
+### Pattern 4: uPlot for Stability Chart (Reuse Existing Library)
 
-## Patterns to Follow
+**What:** The cost-vs-stability graph uses uPlot, already installed in the project. One `x` series (totalWorkers = workersPerPod * podCount) and one `y` series (P_block). The knee point is overlaid as a Canvas annotation using uPlot's `draw` hook.
 
-### Pattern 1: Snapshot-Based Rendering
+**When to use:** uPlot is already a project dependency (~545KB unpacked). The stability chart is a simple 2D line. No additional library needed.
 
-**What:** The engine produces an immutable snapshot object. All renderers consume the same snapshot. No renderer ever mutates engine state.
+**Knee point annotation:** uPlot's `draw` hook provides access to the underlying canvas context and the `u.valToPos()` coordinate transform. Drawing a vertical line + dot at the knee point is ~20 lines.
 
-**When:** Always. This is the foundational pattern.
+**Anti-pattern avoided:** Do not introduce Recharts or Chart.js for this one chart. The project has an explicit bundle-size constraint and uPlot is already the standard.
 
-```typescript
-interface SimulationSnapshot {
-  clock: number;
-  pods: PodSnapshot[];
-  stats: {
-    totalRequests: number;
-    total503s: number;
-    readyPodCount: number;
-    activeWorkerCount: number;
-    totalWorkerCount: number;
-  };
-  metrics: MetricsSample[];
-  phase: 'running' | 'stopped_requests' | 'recovered' | 'finished';
-}
+## Data Flow
 
-interface PodSnapshot {
-  id: number;
-  state: PodState;
-  workers: WorkerSnapshot[];
-  backlogSize: number;
-  backlogMax: number;
-  livenessHistory: boolean[];
-  readinessHistory: boolean[];
-}
-```
-
-### Pattern 2: Command/Config Separation
-
-**What:** User inputs flow as config objects or discrete commands. They never directly mutate engine internals.
-
-```typescript
-// Commands are simple method calls, not state mutations
-engine.stopRequests();    // sets internal rps to 0
-loop.setSpeed(50);        // changes multiplier
-loop.pause();             // stops RAF loop
-```
-
-### Pattern 3: Event Self-Scheduling
-
-**What:** Events schedule their own successors. A `REQUEST_ARRIVAL` schedules the next `REQUEST_ARRIVAL`. A `LIVENESS_PROBE` schedules the next `LIVENESS_PROBE` (after `periodSeconds`).
-
-**Why:** Avoids polling, keeps the event queue as the single source of truth for "what happens next," and naturally handles variable rates (RPS going to 0 means no new `REQUEST_ARRIVAL` is scheduled).
-
-```typescript
-case 'REQUEST_ARRIVAL':
-  this.handleRequestArrival(event);
-  if (this.rps > 0) {
-    const intervalMs = 1000 / this.rps;
-    this.eventQueue.push({
-      time: this.clock + intervalMs,
-      type: 'REQUEST_ARRIVAL',
-      payload: this.generateRequest(),
-    });
-  }
-  break;
-```
-
-### Pattern 4: Probe as Regular Request
-
-**What:** Probes are modeled as requests that compete for workers and backlog space, exactly like user requests. Only difference: 1ms processing time + timeout/threshold evaluation.
-
-**Why:** This is the core insight of the simulation. The cascading failure happens because probes compete with slow requests for workers.
-
-## Anti-Patterns to Avoid
-
-### Anti-Pattern 1: React State for Simulation Data
-
-**What:** Storing pod states, worker states, or event queue in React state or context.
-**Why bad:** Thousands of state updates per second at 100x speed. Reconciliation kills performance.
-**Instead:** Engine state in plain TS classes behind a ref. Only snapshot enters React state at throttled intervals.
-
-### Anti-Pattern 2: Fixed Time-Step Simulation
-
-**What:** Advancing simulation by a fixed 1ms increment and checking for events at each step.
-**Why bad:** At 100x speed for 5 minutes: 30,000,000 iterations. Browser freezes.
-**Instead:** Event-driven stepping. Jump from event to event. 5-minute simulation = ~35,000 events total.
-
-### Anti-Pattern 3: Web Worker for Simulation
-
-**What:** Moving the engine to a Web Worker.
-**Why bad for this project:** Engine step takes <1ms. postMessage serialization overhead for every snapshot (60fps) outweighs the benefit. Canvas rendering must be on main thread anyway.
-**When to reconsider:** Only if profiling shows engine.step() taking >5ms per frame.
-
-### Anti-Pattern 4: DOM-Based Pod Visualization
-
-**What:** Rendering each pod/worker as React components with DOM elements.
-**Why bad:** 200+ DOM elements updating at 60fps. React reconciliation cost is significant.
-**Instead:** Single Canvas element. One draw call per frame. Zero DOM reconciliation.
-
-### Anti-Pattern 5: Charting Every Data Point
-
-**What:** Pushing every event directly into chart data arrays.
-**Why bad:** 30,000+ data points per metric. Chart libraries choke. Memory grows unbounded.
-**Instead:** MetricsCollector samples at 1-second intervals. 300 data points for a 5-minute simulation.
-
-## Component Dependency Graph (Build Order)
+### Optimizer Computation Flow
 
 ```
-Layer 0 (no dependencies):
-  types.ts          -- SimEvent, PodState, SimulationConfig, etc.
-  priority-queue.ts -- MinHeap<T> data structure
-
-Layer 1 (depends on Layer 0):
-  worker.ts         -- Worker model (slot + busy-until)
-  load-balancer.ts  -- LB strategy interface + RoundRobin
-  metrics.ts        -- MetricsCollector + MetricsSample types
-
-Layer 2 (depends on Layers 0-1):
-  pod.ts            -- Pod state machine (uses Worker, types)
-  events.ts         -- Event type definitions and payload types
-
-Layer 3 (depends on Layers 0-2):
-  engine.ts         -- SimulationEngine (uses everything above)
-
-Layer 4 (depends on Layer 3):
-  canvas-renderer.ts   -- CanvasRenderer (reads SimulationSnapshot)
-  chart-renderer.ts    -- ChartRenderer via uPlot (reads MetricsSample[])
-  simulation-loop.ts   -- SimulationLoop (orchestrates engine + renderers)
-
-Layer 5 (depends on Layer 4):
-  useSimulation.ts     -- React hook (wraps SimulationLoop)
-
-Layer 6 (depends on Layer 5):
-  React components     -- ParameterPanel, SimulationCanvas, MetricsChart, Controls, ResultReport
+User fills OptimizerPanel
+         |
+         v
+useOptimizerStore.setInput(input)  -- stores input, clears previous result
+         |
+User clicks "Calculate" (or on input change if auto-run)
+         |
+         v
+useOptimizerStore.runOptimizer()
+  calls: sweepConfigs(input)          -- src/optimizer/sweep.ts
+    each point calls:
+      effectiveLambda(...)            -- src/optimizer/probeModel.ts
+      effectiveMu(...)                -- src/optimizer/probeModel.ts
+      mmckBlockingProb(...)           -- src/optimizer/queueing.ts
+  returns: SweepPoint[]
+  calls: buildCurve(sweepPoints)      -- aggregate by totalWorkers
+  calls: findKneePoint(curve)         -- src/optimizer/kneePoint.ts
+  stores: { sweepPoints, curve, kneeIndex, recommendation }
+         |
+         v
+StabilityChart re-renders (subscribed to store)
+RecommendationCard re-renders (subscribed to store)
 ```
 
-## Scalability Considerations
+### Probe Contention in the Math Model
 
-| Concern | 5 Pods (default) | 20 Pods | 50 Pods |
-|---------|-------------------|---------|---------|
-| Event queue size | ~50-100 events | ~200-400 events | ~500-1000 events |
-| Engine step time per frame | <1ms | <2ms | <5ms |
-| Canvas draw time per frame | <1ms | <2ms | <5ms (may need layout optimization) |
-| Metrics memory (5 min sim) | ~300 samples, <100KB | Same | Same |
-| React re-render cost | Negligible | Negligible | Negligible (snapshot is same structure) |
+The critical domain constraint: probes consume workers like regular requests. The math model accounts for this by treating probes as additional arrival traffic:
 
-**At 50 pods, the architecture still works fine.** The bottleneck at extreme scale would be Canvas layout (fitting 50 pod rectangles on screen), not computation.
+```
+Per-pod effective arrival rate:
+  lambda_eff = (rps / podCount) + (1/livenessPeriod_s) + (1/readinessPeriod_s)
 
-## Technology-Specific Notes
+Per-pod server count (M/M/c/K 'c'):
+  c = workersPerPod
 
-### Priority Queue Implementation
+System capacity (M/M/c/K 'K'):
+  K = workersPerPod + maxBacklog
 
-Use a binary min-heap. Do not use a library -- the implementation is ~40 lines of TypeScript and avoids a dependency for a critical data structure.
+Effective service rate (mu):
+  Weighted harmonic mean of request profile latencies
+  Probe contribution: each probe arrival adds probe_timeout weight at worst case
+```
 
-### Canvas Layout Strategy
+This mapping translates directly from `SimulationConfig` fields to queueing theory parameters. No new concepts needed -- the optimizer speaks the same domain language as the simulator.
 
-Responsive grid layout calculator:
-- Calculate available width/height from canvas dimensions
-- Determine grid columns: `Math.ceil(Math.sqrt(podCount))`
-- Each pod gets a fixed-size cell with padding
-- DPI-aware: set canvas dimensions to `width * devicePixelRatio`, scale context accordingly
+### Shared Types: Import Graph
 
-### Chart Library (uPlot 1.6.32)
+```
+src/simulation/types.ts  (canonical domain types -- unchanged)
+   |
+   +-- imported by src/optimizer/types.ts
+   |       defines: OptimizerInput (uses RequestProfile, ProbeConfig from sim/types)
+   |                OptimizerResult, SweepPoint
+   |
+   +-- imported by src/optimizer/probeModel.ts
+   |       uses: RequestProfile for latency/ratio
+   |
+   +-- imported by src/store/useOptimizerStore.ts
+           uses: OptimizerInput, OptimizerResult
+```
 
-uPlot is 545KB unpacked (verified via npm), Canvas-based, designed for time-series. Key integration points:
-- Create uPlot instance with axes config and initial empty data
-- On each metrics update, call `uPlot.setData()` with the full time-series arrays
-- uPlot handles efficient Canvas redraw internally
-- For streaming: append new samples to data arrays, call setData -- uPlot redraws only changed regions
+`src/simulation/types.ts` is the single source of truth for domain vocabulary. It is never modified by the optimizer -- treated as a library import.
 
-### Snapshot Immutability
+## Integration Points
 
-No structural sharing (Immutable.js) or deep freezing needed. Plain object created fresh by `getSnapshot()`. At 60fps with <20 pods, object creation cost is negligible. Deep cloning the pod array is fine -- it is small.
+### New vs. Modified Components
+
+| Component | Status | Change Description |
+|-----------|--------|--------------------|
+| `src/App.tsx` | MODIFY | Add `activeTab` useState + `<TabBar>` + conditional render of `<OptimizerView />` |
+| `src/index.css` | POSSIBLY MODIFY | Tab bar styles not covered by Tailwind utilities (likely minor) |
+| `src/simulation/types.ts` | UNCHANGED | Read-only import by optimizer |
+| `src/store/useSimulationStore.ts` | UNCHANGED | Simulation store isolation preserved |
+| `src/simulation/*.ts` | UNCHANGED | Engine untouched |
+| `src/visualization/*.ts` | UNCHANGED | Visualization layer untouched |
+| `src/components/*.tsx` | UNCHANGED | Simulator UI components untouched |
+
+### New Files
+
+| File | Purpose |
+|------|---------|
+| `src/optimizer/types.ts` | OptimizerInput, OptimizerResult, SweepPoint types |
+| `src/optimizer/queueing.ts` | Erlang C, M/M/c/K pure functions |
+| `src/optimizer/probeModel.ts` | Probe-adjusted effective lambda and mu |
+| `src/optimizer/sweep.ts` | Config space sweep over workers/pods/backlog |
+| `src/optimizer/kneePoint.ts` | Kneedle knee-point detection on 2D curve |
+| `src/optimizer/queueing.test.ts` | Formula tests against known M/M/c reference values |
+| `src/optimizer/probeModel.test.ts` | Probe model unit tests |
+| `src/optimizer/sweep.test.ts` | Sweep output shape + knee point tests |
+| `src/store/useOptimizerStore.ts` | Zustand store for optimizer state |
+| `src/optimizer-ui/OptimizerPanel.tsx` | Input form sidebar (traffic params, probe config, sweep bounds) |
+| `src/optimizer-ui/StabilityChart.tsx` | uPlot cost-vs-stability chart with knee-point annotation |
+| `src/optimizer-ui/RecommendationCard.tsx` | Recommended config display with key metrics |
+| `src/optimizer-ui/OptimizerView.tsx` | Top-level optimizer tab layout |
+
+### Internal Boundaries
+
+| Boundary | Communication | Notes |
+|----------|---------------|-------|
+| `optimizer/` <-> `simulation/` | Import of types only (read-only) | No runtime coupling; SimulationEngine never called by optimizer |
+| `optimizer/` <-> `optimizer-ui/` | Function calls via Zustand store actions | Math engine has zero React/DOM dependencies |
+| `SimulatorView` <-> `OptimizerView` | None at runtime | Tab switch re-renders App only; both views independently stateful |
+| `useSimulationStore` <-> `useOptimizerStore` | None | Separate store slices, no cross-store subscriptions |
+
+## Suggested Build Order
+
+Ordered by dependency: each phase's prerequisites are satisfied by the prior phase.
+
+**Phase 1 -- Queueing Math Engine** (pure TypeScript, no UI dependencies)
+- `src/optimizer/types.ts`
+- `src/optimizer/queueing.ts` -- M/M/c/K formulas with log-space arithmetic
+- `src/optimizer/probeModel.ts` -- probe-adjusted lambda/mu
+- `src/optimizer/sweep.ts` -- config sweep
+- `src/optimizer/kneePoint.ts` -- knee point detection
+- All `*.test.ts` -- verify formulas against hand-calculated M/M/c reference values
+
+Verify: `vitest run` passes. P_block for known inputs matches textbook M/M/c/K values.
+
+**Phase 2 -- Optimizer Store** (depends on Phase 1 types and functions)
+- `src/store/useOptimizerStore.ts`
+- Verify: calling `runOptimizer()` with valid input produces correct SweepPoint[] shape and populates recommendation.
+
+**Phase 3 -- Tab Navigation** (modifies App.tsx, no optimizer UI dependency)
+- Add `activeTab` state and `<TabBar>` component to `App.tsx`
+- Render stub `<div>Optimizer coming soon</div>` for optimizer tab
+
+Verify: tab switching works, simulator tab still functions identically.
+
+**Phase 4 -- Optimizer UI** (depends on Phases 1, 2, 3)
+- `src/optimizer-ui/OptimizerPanel.tsx`
+- `src/optimizer-ui/StabilityChart.tsx` -- uPlot wired to store results
+- `src/optimizer-ui/RecommendationCard.tsx`
+- `src/optimizer-ui/OptimizerView.tsx`
+- Wire `OptimizerView` into `App.tsx`
+
+Verify: entering traffic params triggers sweep, chart renders curve, recommendation card shows knee-point config.
+
+## Anti-Patterns
+
+### Anti-Pattern 1: Adding React Router for Two Tabs
+
+**What people do:** Install `react-router-dom` to get URL-based tab routing.
+
+**Why it's wrong:** The project deploys as a static SPA (GitHub Pages / S3). `BrowserRouter` requires server URL rewriting these hosts do not provide. `HashRouter` works but adds ~50KB for zero functional gain. The optimizer has no deep links and no bookmarkable state.
+
+**Do this instead:** `useState<'simulator' | 'optimizer'>` in `App.tsx`. Switching tabs is UI state, not routing.
+
+### Anti-Pattern 2: Duplicating SimulationConfig Types for Optimizer Input
+
+**What people do:** Define a separate `OptimizerTrafficConfig` that copies `rps`, `requestProfiles`, `livenessProbe`, `readinessProbe` fields.
+
+**Why it's wrong:** `src/simulation/types.ts` already defines these types canonically. Duplicating creates divergence risk: if `ProbeConfig` gains a field, only one copy gets updated.
+
+**Do this instead:** `OptimizerInput` imports `RequestProfile` and `ProbeConfig` directly from `../simulation/types`. Only the new sweep-bound fields (workerRange, podRange, backlogRange) are defined in `src/optimizer/types.ts`.
+
+### Anti-Pattern 3: Running the Sweep Inside a React Component
+
+**What people do:** Compute the sweep in a `useMemo` or `useEffect` inside `StabilityChart.tsx`.
+
+**Why it's wrong:** Embeds math logic in render lifecycle, making it untestable without component mounting. Creates implicit dependencies on React re-render timing.
+
+**Do this instead:** Zustand store action `runOptimizer()` calls `sweepConfigs()` synchronously and stores results. Components are display-only -- they subscribe to results, never compute them.
+
+### Anti-Pattern 4: A New Chart Library for the Stability Graph
+
+**What people do:** Reach for Recharts or Chart.js because the optimizer chart is "different."
+
+**Why it's wrong:** uPlot is already installed and has working patterns in the project. Adding a second library doubles chart-related bundle size. The stability chart is a simple 2D line with one annotation -- uPlot handles this with its `draw` hook.
+
+**Do this instead:** Use uPlot for the stability chart following the same `uplot-react` wrapper pattern used in `MetricsCharts.tsx`. Use the `draw` hook for the knee-point Canvas annotation.
+
+### Anti-Pattern 5: Merging Optimizer State into useSimulationStore
+
+**What people do:** Add `optimizerInput`, `optimizerResult` to `useSimulationStore.ts` for convenience.
+
+**Why it's wrong:** The simulation store holds live engine refs and playback state that changes at 60fps. Optimizer state changes only on explicit user action. Coupling them causes unrelated re-renders and violates single-responsibility.
+
+**Do this instead:** Separate `useOptimizerStore.ts`. Independent features get independent stores.
+
+## Scaling Considerations
+
+This is a browser-only single-user tool. "Scaling" means supporting wider sweep spaces and more complex math models.
+
+| Scenario | Approach |
+|----------|----------|
+| Current sweep (20x20x50 = 20K evals) | Synchronous main thread, <10ms |
+| Wider sweep (50x50x100 = 250K evals) | Still feasible synchronous (~50ms). If UI jank occurs, yield via `setTimeout(..., 0)` between sweep chunks |
+| Monte Carlo extension or very wide sweep | Move `sweepConfigs()` to a Web Worker. Pure-function architecture makes this drop-in: serialize OptimizerInput, post to Worker, receive SweepPoint[] back. No architectural refactor needed |
+
+The pure-function design of the optimizer engine means Web Worker migration is a future option that requires changing only the call site in the store -- not the math code itself.
 
 ## Sources
 
-- Discrete event simulation patterns: established computer science (HIGH confidence)
-- Canvas rendering performance vs DOM/SVG: well-documented browser characteristics (HIGH confidence)
-- React refs for mutable state: standard React pattern (HIGH confidence)
-- requestAnimationFrame timing patterns: Web API standard (HIGH confidence)
-- Min-heap priority queue: standard data structure (HIGH confidence)
-- uPlot version and size: verified via npm registry on 2026-04-11 (HIGH confidence)
-- Zustand 5 compatibility: peer deps verified via npm (HIGH confidence)
+- [M/M/c queue -- Wikipedia](https://en.wikipedia.org/wiki/M/M/c_queue): M/M/c/K steady-state probability formulas (HIGH confidence)
+- [M/M/s/K Queueing Model -- Real Statistics](https://real-statistics.com/probability-functions/queueing-theory/m-m-s-k-queueing-model/): Finite-queue blocking probability derivation (HIGH confidence)
+- [Erlang C Formula Made Simple -- Call Centre Helper](https://www.callcentrehelper.com/erlang-c-formula-example-121281.htm): Erlang C P(wait) formula (HIGH confidence)
+- [Gunicorn Design](https://gunicorn.org/design/): Sync worker pre-fork model confirming one-request-per-worker behavior (HIGH confidence)
+- [uPlot GitHub Issue #107](https://github.com/leeoniya/uPlot/issues/107): uPlot custom draw hook for annotations (MEDIUM confidence -- issue-level documentation)
+- [React Router v7 Hash Routing Discussion](https://github.com/remix-run/react-router/discussions/13057): Confirms HashRouter still viable in v7 SPA mode (MEDIUM confidence)
+- [React State Management 2025 -- developerway.com](https://www.developerway.com/posts/react-state-management-2025): useState for isolated tab state vs Zustand for shared state (MEDIUM confidence)
+
+---
+*Architecture research for: Statistical Optimizer integration into slow_request_simulator SPA*
+*Researched: 2026-04-11*

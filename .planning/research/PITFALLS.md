@@ -1,125 +1,145 @@
 # Domain Pitfalls
 
-**Domain:** Browser-based discrete event simulation with Canvas visualization for EKS synchronous worker pod failure modeling
+**Domain:** Adding queuing-theory-based statistical optimizer to existing browser-based discrete event simulator (v1.1 milestone)
 **Researched:** 2026-04-11
-**Confidence:** HIGH (based on established patterns in simulation engineering, Canvas rendering, and Kubernetes operations)
+**Confidence:** HIGH for math/algorithm pitfalls (established literature); MEDIUM for UI/integration pitfalls (inference from patterns)
 
 ---
 
 ## Critical Pitfalls
 
-Mistakes that cause rewrites, incorrect simulation results, or unusable performance.
+Mistakes that cause incorrect recommendations, misleading outputs, or unusable results.
 
 ---
 
-### Pitfall 1: Simulation Time vs. Wall Clock Time Conflation
+### Pitfall 1: Standard M/M/c Ignores the Probe-as-Worker-Consumer
 
-**What goes wrong:** The simulation engine mixes real elapsed time (`performance.now()`) with simulation-logical time. At 100x speed, events scheduled in simulation-time get compared against wall-clock time somewhere in the pipeline. Probes fire at wrong intervals, request latencies are incorrect, cascading failure timings become unreproducible.
+**What goes wrong:**
+The standard M/M/c model assumes all `c` servers are available for requests. In this system, each pod has `workersPerPod` workers, but liveness and readiness probes periodically occupy one worker each (serialized per probe type by the FIFO backlog). The model treats `effectiveWorkers = workersPerPod` but the real throughput-available workers at any moment is `workersPerPod - probeSlotsConsumed`.
 
-**Why it happens:** `requestAnimationFrame` provides wall-clock delta. When speed multiplier is applied, some code paths still operate on wall-clock time. The two time domains bleed into each other.
+At probe arrival rate `2 / periodSeconds` and probe service time of essentially 0 (1ms in the sim), the mean concurrency consumed by probes is negligible under normal load. But at high utilization (ρ → 1), the probe occupying a worker for even 1ms pushes the queue over a tipping point. The model misses this and predicts stability when the real system cascades.
 
-**Consequences:** Simulation produces different results at different speeds. A scenario at 1x might cascade at 45s but at 100x shows cascade at 38s. Users lose trust in the tool. The bug is subtle -- results look plausible but are wrong.
+**Why it happens:**
+Standard M/M/c derivations in textbooks do not model periodic background tasks that consume server capacity. Developers apply the formula without adjusting the effective service rate.
 
-**Prevention:**
-1. Establish a single `SimulationClock` that is the ONLY source of "current time" for all simulation logic. No simulation code ever calls `Date.now()` or `performance.now()`.
-2. The RAF loop computes `simDelta = wallDelta * speed` and passes it to `engine.step(simDelta)`.
-3. All events in the priority queue are keyed on simulation time, never wall time.
-4. Write deterministic tests: same seed + same parameters must produce identical event sequences regardless of speed. Run the same scenario at 1x, 10x, 100x and assert identical event logs.
+**How to avoid:**
+Model probes as a separate background Poisson process with rate `λ_probe = 2 / periodSeconds` per pod (liveness + readiness). Adjust effective worker capacity: `c_eff = workersPerPod - E[probe_occupancy]`. For near-instantaneous probe service (1ms), `E[probe_occupancy] ≈ λ_probe * serviceTime_probe`. Include probe traffic in the total offered load: `λ_total = λ_requests + λ_probe * podCount`.
 
-**Detection:** Debug mode that logs every event with both simTime and wallTime. If simTime deltas between events don't match expected values, the conflation exists.
+More critically: model the probe timeout mechanism. When workers are saturated, probes queue. If probe wait time exceeds `timeoutSeconds`, the probe counts as failure. After `failureThreshold` failures, the pod restarts. This cascade mechanism is entirely absent from standard M/M/c and must be layered on top via a supplementary state machine model.
 
-**Phase:** Must be addressed in Phase 1 (simulation engine core). Retrofitting time discipline is a rewrite.
+**Warning signs:**
+- Optimizer recommends a config that "passes" mathematically but the simulator shows cascading failure
+- Probe timeout time (`timeoutSeconds`) has no parameter in the optimizer input form
+- Calculated utilization ρ is close to 1.0 but no warning is shown about probe sensitivity
 
----
-
-### Pitfall 2: Priority Queue Degeneracy at High Speed
-
-**What goes wrong:** At 100x speed with 100 RPS, the engine must process 10,000+ request arrivals per real second. A naive array-based priority queue with O(n) insertion causes frame drops and browser tab freezes.
-
-**Why it happens:** Many tutorials implement priority queues as sorted arrays. At high speed multiplier, the queue grows to thousands of pending events. Each insertion scans/shifts the array. GC pressure from frequent resizing compounds the problem.
-
-**Consequences:** At 50x-100x speed, the simulation becomes unresponsive -- exactly when users need it most.
-
-**Prevention:**
-1. Use a binary heap (min-heap). Insertion and extraction are O(log n). Non-negotiable.
-2. Pre-allocate the heap array to ~10,000 slots to avoid GC from resizing.
-3. Event cancellation via "tombstone" pattern (mark cancelled, skip on pop) to avoid O(n) removal.
-4. Batch event processing: advance all events up to target time in a tight loop, only snapshot for rendering after the batch.
-
-**Detection:** Chrome DevTools Performance tab at 100x speed with 100 RPS. If `engine.step()` exceeds 8ms per frame, the queue is the bottleneck.
-
-**Phase:** Phase 1 (engine core). The priority queue is foundational.
+**Phase to address:**
+Math engine phase (Phase 1 of v1.1). The probe adjustment must be baked into the core calculation, not added as an afterthought.
 
 ---
 
-### Pitfall 3: Probe Timing Model Inaccuracy
+### Pitfall 2: Steady-State Assumption Applied to a Transient Failure System
 
-**What goes wrong:** The health check probe model doesn't faithfully replicate Kubernetes behavior. Common mistakes:
-- Probes fire on a fixed timer regardless of whether previous probe completed (correct K8s: next probe starts `periodSeconds` after the previous completes/times out)
-- Probe timeout starts from when a worker picks it up, not from when it was sent (in reality: timeout starts at send time, backlog wait counts)
-- Forgetting that probes don't fire during initialization / restart period
+**What goes wrong:**
+M/M/c/K steady-state formulas assume the system has reached statistical equilibrium. The cascading failure scenario this tool models is fundamentally a transient phenomenon — the system starts healthy, degrades over minutes, then fails completely. Steady-state analysis gives an average behavior that masks the failure mode entirely.
 
-**Why it happens:** K8s probe behavior has edge cases not obvious from documentation summaries.
+Specifically: at ρ = 0.85, steady-state M/M/c/K says "queue is stable, expected wait is X ms." But in the real system, slow requests lock workers for minutes. The system is not in steady state — it is on a degradation trajectory where each probe failure increases load on remaining pods until cascade.
 
-**Consequences:** The simulator shows a pod restarting at 35s, but in real EKS it would restart at 50s. The core value -- predicting cascading failure timing -- becomes unreliable.
+**Why it happens:**
+Steady-state formulas are what textbooks teach and what online calculators implement. The transient path to failure is much harder to model analytically.
 
-**Prevention:**
-1. After a probe completes or times out, schedule NEXT probe at `currentSimTime + periodSeconds * 1000`. This matches kubelet behavior.
-2. Probe timeout: start from when the probe event is created (simulating HTTP request sent), NOT from when a worker picks it up.
-3. If probe sits in backlog longer than timeoutSeconds, it's a failure regardless.
-4. If backlog is full when probe arrives, immediate failure (not even queued).
-5. On pod restart, cancel all pending probe events. After initializeTime, schedule fresh probes.
-6. Validate against manual calculation with deterministic parameters.
+**How to avoid:**
+Be explicit in the UI that the optimizer outputs are steady-state stability predictions, not cascade timing predictions. The optimizer answers: "Given these params, will the system eventually reach a stable operating point?" The simulator answers: "How long does it take to get there or to fail?" Frame the optimizer as a configuration screener, not a replacement for simulation.
 
-**Detection:** Test scenario with no randomness. Hand-calculate exact time of first probe failure, first restart, total outage. Simulation must match within 1ms.
+For the cascade mechanism specifically: use a supplementary rule-based analysis on top of M/M/c/K. If `ρ > (workersPerPod - 1) / workersPerPod` (one worker tied up by a slow request reduces effective workers), flag as "at-risk." If the probe timeout is shorter than the slow request duration, flag as "cascade-prone."
 
-**Phase:** Phase 1 (engine core). The probe model is the heart of the cascading failure mechanism.
+**Warning signs:**
+- Optimizer and simulator disagree by more than 20% on worker utilization
+- A config passes the optimizer but simulations consistently show failure
+- The UI implies the optimizer predicts "when" failure happens (it cannot)
 
----
-
-### Pitfall 4: React State Synchronization with Simulation Engine
-
-**What goes wrong:** The bridge between engine state and React components is mishandled:
-- `useState` for simulation state causes entire tree to re-render at 60fps
-- `useRef` avoids re-renders but React components don't update when they should
-- Zustand store updates trigger re-renders for parameter panel even when only simulation state changed
-- Metrics chart component subscribes to simulation state, triggering 60fps chart re-renders
-
-**Why it happens:** React's reactive model fundamentally conflicts with a high-frequency imperative simulation loop.
-
-**Consequences:** Either the UI is unresponsive (too many re-renders) or stale (not enough). Both destroy UX.
-
-**Prevention:**
-Three-tier state architecture:
-1. **Tier 1 (Engine state):** Pure TypeScript classes, no React. Updated thousands of times per second. Never in React state.
-2. **Tier 2 (Render snapshot):** Plain object created once per frame. Passed to Canvas renderer imperatively (not via React props).
-3. **Tier 3 (React UI state):** Only for user inputs (Zustand 5), playback controls, post-simulation results. Updated on user action or at throttled intervals (~20Hz), NOT every frame.
-
-Canvas renders via ref, not state. Metrics charts (uPlot) updated imperatively via `setData()`, not via React props. Use `React.memo` on parameter panel, controls, and result report.
-
-**Detection:** React DevTools Profiler. If any component re-renders more than once per user interaction (excluding Canvas), the bridge is leaking simulation state into React.
-
-**Phase:** Phase 1 (architecture decision) + Phase 2 (implementation).
+**Phase to address:**
+Phase 1 (math engine) — the limitation must be modeled. Phase 2 (UI) — the limitation must be communicated clearly to users.
 
 ---
 
-### Pitfall 5: Event Queue Overflow from Cascading Event Generation
+### Pitfall 3: Erlang C Numerical Instability at High Utilization
 
-**What goes wrong:** During cascading failure, a pod restart drops all in-progress requests and backlog. If 10 pods restart simultaneously (4 workers + 10 backlog = 14 requests each), that's 140 requests dropped instantly, each potentially generating events. Meanwhile, new arrivals keep coming at 100 RPS. The event queue balloons.
+**What goes wrong:**
+The Erlang C formula (used in M/M/c analysis) involves `c^c * c!` in the denominator. At `c = 20` workers per pod and high utilization, these values overflow IEEE 754 double-precision floating point before the formula cancels them. The result is `NaN`, `Infinity`, or silently wrong numbers.
 
-**Why it happens:** The discrete event model naturally amplifies during state transitions. Each state change triggers multiple consequent events.
+JavaScript `Number.MAX_SAFE_INTEGER` is `2^53`. `20!` is `2.4 × 10^18`, which exceeds `Number.MAX_SAFE_INTEGER` (`9 × 10^15`). At `workersPerPod = 20`, naive Erlang C computation breaks entirely.
 
-**Consequences:** Memory spikes during the most interesting part of the simulation. Browser tab may run out of memory. Visualization freezes at the critical moment.
+**Why it happens:**
+Direct formula implementation from textbooks does not account for floating-point scale. The overflow is silent in many cases — the result is just a very large or very small number that passes superficial sanity checks.
 
-**Prevention:**
-1. On pod restart, bulk-clear workers and backlog. Record a single `pod_restarted` event with metadata (`{droppedRequests: 14}`). Don't generate individual "request dropped" events.
-2. Event handlers should modify state directly, not by enqueueing chains of intermediate events.
-3. Monitor queue depth. If it grows monotonically, there's a leak.
-4. Set a max events-per-step limit (e.g., 50,000) as safety valve.
+**How to avoid:**
+Use the recursive/iterative form instead of direct computation. The Erlang B inverse recurrence is numerically stable: `1/B(A,j) = 1 + (j/A) * 1/B(A,j-1)`. Express Erlang C in terms of Erlang B to inherit this stability. Alternatively, compute in log-space using `Math.log` / `Math.exp` throughout, converting back only at the final step.
 
-**Detection:** Stress test: 20 pods, 4 workers, RPS=200, 100x speed. Monitor `eventQueue.size()`. Healthy: fluctuates around stable mean. Unhealthy: monotonic growth.
+Explicit guard: check `ρ >= 1` before computing — the formula is undefined in this regime. Return a structured error, not `NaN`.
 
-**Phase:** Phase 1 (engine design).
+Write unit tests specifically at boundary values: `c = 1, 4, 10, 20`, `ρ = 0.5, 0.9, 0.99, 1.0, 1.01`.
+
+**Warning signs:**
+- `NaN` or `Infinity` appearing in computed metrics
+- Results that are identical regardless of worker count changes
+- Any calculation path that computes `c!` directly via a loop
+
+**Phase to address:**
+Phase 1 (math engine). Numerical stability must be verified by unit tests before any UI is built on top of it.
+
+---
+
+### Pitfall 4: Optimizer and Simulator Appear to Contradict Each Other
+
+**What goes wrong:**
+User sets parameters in the optimizer, gets a recommendation, switches to the simulator tab with those parameters, runs the simulation, and the simulator shows failure when the optimizer said "stable." User concludes one of them is broken. Trust in both tools collapses.
+
+This divergence is mathematically inevitable: M/M/c assumes Poisson arrivals (exponential inter-arrivals) and exponential service times. The simulator uses a seeded PRNG with specific request profiles that may have non-exponential latency distributions (e.g., bimodal: 100ms normal + 10s slow). The steady-state formula predicts average behavior, not the specific failure path driven by the slow-request tail.
+
+**Why it happens:**
+No explanation is provided about why the tools use different models. Users assume both tools are modeling the same thing.
+
+**How to avoid:**
+Add explicit UI copy: "The optimizer uses M/M/c steady-state analysis (best-case stability bound). The simulator models the actual cascade dynamics including probe failures. Use the optimizer to find candidate configs, then validate with simulation." 
+
+Where possible, surface the same metrics in both views (e.g., theoretical vs. simulated worker utilization) so users can see the delta and understand the model gap.
+
+**Warning signs:**
+- No explanation text near optimizer results about model assumptions
+- Optimizer output has the same units/labels as simulator metrics but different values
+- No cross-link between optimizer recommendation and simulator parameters
+
+**Phase to address:**
+Phase 2 (UI) — the framing must be designed from the start. Phase 1 (math engine) — document which assumptions are being made so the UI can surface them accurately.
+
+---
+
+### Pitfall 5: Knee Point Detection on a Monotone or Noisy Curve
+
+**What goes wrong:**
+The cost-vs-stability curve (e.g., X = total workers, Y = predicted failure probability) may be monotonically decreasing without a clear inflection. Applying Kneedle or similar algorithms to a smooth monotone curve produces a false knee at an arbitrary point. Worse, at small parameter sweeps (e.g., only 5-10 data points), the curve is noisy enough that the detected knee moves unpredictably as input params change.
+
+Kneedle is also sensitive to normalization: if the X axis (cost) spans 1-100 and Y axis (stability) spans 0.99-1.0, the normalization step treats the Y range as tiny, potentially mislocating the knee.
+
+**Why it happens:**
+Developers implement Kneedle because it is the canonical algorithm (the paper is widely cited). They do not validate that the curve being analyzed actually has a knee. The algorithm always returns something — it does not report "no knee found."
+
+**How to avoid:**
+Before knee detection, validate that the curve is non-monotone or has sufficient curvature. Specifically: check that the second derivative changes sign. If the curve is monotone, fall back to a percentile-based heuristic: "the point where adding one more worker reduces failure probability by less than X%."
+
+Use a minimum of 15-20 data points for knee detection. With fewer than 10 points, Kneedle produces unreliable results.
+
+Apply smoothing (3-5 point moving average) before knee detection to reduce noise sensitivity.
+
+Always display the full curve and the detected knee point together — let the user visually override the detected knee if it looks wrong.
+
+**Warning signs:**
+- Knee point jumps dramatically when a single input parameter changes slightly
+- The knee is always at the first or last data point
+- The curve being analyzed has a coefficient of variation of output values less than 0.05 (essentially flat)
+
+**Phase to address:**
+Phase 1 (math engine) — the sweep algorithm and knee detection logic. Phase 2 (UI) — always show the full curve, not just the knee result.
 
 ---
 
@@ -127,167 +147,245 @@ Canvas renders via ref, not state. Metrics charts (uPlot) updated imperatively v
 
 ---
 
-### Pitfall 6: Floating Point Time Accumulation Drift
+### Pitfall 6: Parameter Sweep Blocking the Main Thread
 
-**What goes wrong:** Simulation time accumulated as `simTime += deltaMs * speed`. After 6,000,000 simulated ms, floating point errors can be 0.1-1ms. Probe events at exact multiples of `periodSeconds` fire slightly early/late, causing off-by-one in failure threshold counting.
+**What goes wrong:**
+Finding the knee point requires sweeping across a range of parameter combinations (e.g., `podCount` 1-20, `workersPerPod` 1-20 = 400 combinations). Each combination requires computing Erlang C, steady-state probabilities, and cascade risk scores. At 400 combinations × ~0.1ms per calculation = 40ms synchronous JavaScript — this freezes the browser tab for a perceptible instant.
 
-**Prevention:**
-1. Use integer milliseconds for simulation time. JS numbers are doubles -- integers up to 2^53 are exact.
-2. Event scheduling: compute absolute times from base times (`lastProbeTime + periodSeconds * 1000`), not by adding to accumulated simTime.
-3. Request arrivals: pre-compute as `baseTime + (i * intervalMs)`.
+If the sweep is triggered on every slider change (immediate recalculation), a user dragging the RPS slider triggers dozens of 40ms freezes per second.
 
-**Phase:** Phase 1 (engine core). Integer time discipline from the start.
+**Why it happens:**
+Mathematical calculations feel "instant" in development testing with small ranges. Performance degrades linearly with sweep size. The problem only appears at production-scale parameter ranges.
 
----
+**How to avoid:**
+Debounce parameter changes with a 200-300ms delay before triggering sweep. For the sweep itself, chunk execution using `setTimeout(fn, 0)` between batches or use `requestIdleCallback` to yield between computation chunks. If sweep time consistently exceeds 50ms, move computation to a Web Worker.
 
-### Pitfall 7: Round-Robin LB Index Corruption on Pod State Changes
+Profile the sweep computation time explicitly before shipping. Log `performance.now()` before and after a full sweep at max range.
 
-**What goes wrong:** When pods transition Ready/Not-Ready, the ready pod set changes. RR index doesn't adjust, causing uneven distribution that accelerates cascading failure on some pods.
+**Warning signs:**
+- Sweep is triggered synchronously in an onChange handler without debounce
+- The sweep iterates over all combinations in a single synchronous loop
+- No measurement of sweep execution time in development
 
-**Prevention:**
-1. Reset index to 0 when ready-set composition changes.
-2. Or iterate through sorted pod IDs (closer to real kube-proxy behavior).
-3. Document LB behavior so users understand the model.
-
-**Phase:** Phase 1 (engine core).
-
----
-
-### Pitfall 8: Metrics Chart Memory Growth
-
-**What goes wrong:** At 100x speed, 5 min real session = 500 min simulated = 300,000 data points per metric if sampling every 100ms. uPlot and the browser choke on this.
-
-**Prevention:**
-1. Adaptive sampling: at 1x sample every 100ms sim-time, at 100x sample every 1000ms. Real data points/second stays constant.
-2. Ring buffer: keep last N data points (e.g., 2,000) at full resolution. Older points downsampled.
-3. uPlot handles large datasets well, but bounded input is still best practice.
-
-**Phase:** Phase 2 (metrics/visualization). Plan the ring buffer structure in Phase 1.
+**Phase to address:**
+Phase 1 (math engine) — design the computation to be chunked. Phase 2 (UI) — add debounce on inputs.
 
 ---
 
-### Pitfall 9: Incorrect Request Handling on Pod State Transitions
+### Pitfall 7: Bimodal Latency Distribution Mapped to Single Service Rate
 
-**What goes wrong:** Developers conflate "removed from load balancer" (NOT_READY) with "stopped working." In reality:
-- **NOT_READY:** No new requests from LB, but existing workers continue, backlog drains normally.
-- **RESTARTING:** All workers cleared, all backlog dropped, initializeTime countdown begins.
+**What goes wrong:**
+The simulator uses request profiles with mixed latencies (e.g., 90% at 200ms, 10% at 8000ms). M/M/c requires a single exponential service time parameter μ. Developers naively use the weighted average: `μ = 1 / (0.9 * 200ms + 0.1 * 8000ms) = 1 / 980ms`. 
 
-Getting this wrong makes recovery look faster than reality, making users overconfident.
+This underestimates instability severely. The slow request tail (8000ms) is what saturates workers and blocks probes. The average-based μ gives ρ = 0.49 (looks very safe), while the slow request subset alone would give ρ = 1.28 per slow request slot (catastrophic).
 
-**Prevention:**
-1. Implement exactly as SPEC: NOT_READY = no new requests, existing work continues. RESTARTING = hard reset.
-2. Write explicit tests: Pod with 4 busy workers goes Not-Ready. Workers must complete normally. Only liveness failure triggers the hard reset.
+**Why it happens:**
+M/M/c is derived for exponential service times. A bimodal distribution is not exponential, and the mean does not capture the tail behavior that causes failures in this specific system.
 
-**Phase:** Phase 1 (pod state machine).
+**How to avoid:**
+Use the `slowRequestRatio * slowLatency / workersPerPod` sub-calculation to produce a "slow-request-only ρ" as an additional signal. If `slowRatio * slowLatency / (workersPerPod * 1000ms)` > 0.8, flag as high-risk regardless of the average ρ.
 
----
+Explicitly document in the UI that the model assumes exponential service times and that bimodal distributions (normal + slow) are approximated. Consider providing a "slow request saturation" metric separately from Erlang C ρ.
 
-### Pitfall 10: requestAnimationFrame Starvation Under Load
+**Warning signs:**
+- Service rate μ is computed as `1 / weightedAvgLatency` without further analysis
+- The slow request ratio and slow request latency have no separate effect on the output
+- System with 50% slow requests at 10s shows the same stability score as system with 5% slow requests at 10s
 
-**What goes wrong:** At high speed, `engine.step()` hogs the main thread. UI controls (speed slider, pause, "stop requests") become unresponsive. At the critical moment when user needs to click "Stop Requests," the button doesn't respond for 200-500ms.
-
-**Prevention:**
-1. Time-boxed advance: process events for at most 8ms wall time per frame. Continue in next frame if needed.
-2. After processing, check `performance.now()` elapsed. If >12ms, break and yield for input events.
-
-**Phase:** Phase 2 (performance). Design the `maxAdvanceWallMs` parameter in Phase 1.
+**Phase to address:**
+Phase 1 (math engine). The slow-request approximation must be built into the core model, not added later.
 
 ---
 
-### Pitfall 11: Determinism Loss from Math.random()
+### Pitfall 8: Optimizer State Coupling to Simulator State
 
-**What goes wrong:** Request profiles assigned via `Math.random()`. Every run produces different results. Users can't reproduce specific failure scenarios.
+**What goes wrong:**
+The optimizer tab shares Zustand store config state with the simulator tab. When a user changes parameters in the optimizer to explore configs, those changes immediately affect the simulator's config. The user returns to the simulator tab and finds a running simulation using different parameters than they set up, or a completed simulation whose report reflects optimizer exploration, not intentional simulator runs.
 
-**Prevention:**
-1. Seedable PRNG (e.g., `mulberry32` -- ~10 lines of code).
-2. Default seed displayed in UI, user-changeable.
-3. ALL random decisions use the seeded PRNG, never `Math.random()`.
-4. Include seed in result reports.
+**Why it happens:**
+The easiest implementation is to reuse the existing `SimulationConfig` Zustand store for optimizer inputs. It minimizes new code but couples two independent workflows.
 
-**Phase:** Phase 1 (engine core). Must be in place before any random decisions.
+**How to avoid:**
+Give the optimizer its own state slice — `OptimizerConfig` separate from `SimulationConfig`. On "Run in Simulator" (the CTA button), copy optimizer config into simulator config with an explicit user action. Do not share config state bidirectionally.
 
----
+**Warning signs:**
+- Optimizer form binds directly to the same Zustand atoms as the simulator parameter panel
+- Changing optimizer inputs causes the simulator's "ready to run" config to change
+- No explicit "transfer to simulator" action
 
-## Minor Pitfalls
-
----
-
-### Pitfall 12: Canvas DPI Scaling (Retina/HiDPI)
-
-**What goes wrong:** On Retina displays, Canvas renders at 1x resolution, causing blurry text and lines.
-
-**Prevention:** Set canvas dimensions to `width * devicePixelRatio`, scale context with `ctx.scale(dpr, dpr)`, apply CSS dimensions at 1x. Must be done from the start.
-
-**Phase:** Phase 2 (visualization).
+**Phase to address:**
+Phase 2 (UI/state). Must be designed into the state architecture from the start of the UI phase.
 
 ---
 
-### Pitfall 13: Speed Change Mid-Simulation Jump
+### Pitfall 9: Treating Optimizer Output as Prescriptive Instead of Indicative
 
-**What goes wrong:** Speed change from 10x to 100x causes a one-frame jump where too many events process, or 100x to 1x has a stutter.
+**What goes wrong:**
+The optimizer outputs a single "recommended" config: "Use 3 pods, 6 workers each, backlog 15." The user deploys this config to production. But M/M/c/K is a steady-state average model that cannot account for:
+- Traffic spikes (bursty arrivals violate the Poisson assumption)
+- Slow request bursts (correlated arrivals, not independent)
+- Restart overhead (during initializeTime, pods are offline, load concentrates on remaining pods)
 
-**Prevention:** Speed changes take effect next frame. Time-boxed advance pattern handles sudden increases.
+The user trusts the recommendation and experiences a real outage.
 
-**Phase:** Phase 1 (engine control).
+**Why it happens:**
+Single-number recommendations feel authoritative. Users tend to take "recommended config" at face value without reading caveats.
 
----
+**How to avoid:**
+Always display the recommendation alongside its safety margin. Instead of "Use 6 workers," show "6 workers (ρ = 0.72, safety margin: 28% below saturation)." Provide a warning if the recommended ρ exceeds 0.7. Explicitly label the output as "minimum viable config — add safety margin for production."
 
-### Pitfall 14: Parameter Validation Gaps
+Recommend the simulator as the validation step before any production deployment decision.
 
-**What goes wrong:** `workersPerPod: 0`, `rps: 0`, `timeoutSeconds > periodSeconds` (rapid restart loop), `ratio` values not summing to 1.0. Simulation enters degenerate states.
+**Warning signs:**
+- Recommendation is a single config with no confidence range or safety margin
+- No warning when recommended ρ is above 0.7
+- No text advising to validate with simulation before production use
 
-**Prevention:**
-1. Validate all parameters before simulation start.
-2. Warn but allow degenerate configs like timeout > period (these create interesting failure modes).
-3. Normalize ratio values to sum to 1.0.
-4. Minimums: `workersPerPod >= 1`, `podCount >= 1`.
-
-**Phase:** Phase 2 (UI) + engine-level assertions.
-
----
-
-### Pitfall 15: Backlog Queue Ordering / Probe Priority
-
-**What goes wrong:** Backlog accidentally uses stack (LIFO) instead of queue (FIFO), or probes get priority over regular requests (separate queue, front-of-line insertion). Both make simulation diverge from real gunicorn behavior.
-
-**Prevention:** FIFO queue. Probes go into the same FIFO backlog as regular requests. No priority. No separate queue. This matches real sync worker behavior.
-
-**Phase:** Phase 1.
+**Phase to address:**
+Phase 2 (UI) — framing and safety warnings. Phase 1 (math engine) — compute safety margin as a first-class output.
 
 ---
 
-### Pitfall 16: uPlot React Integration Lifecycle
+### Pitfall 10: Tab Architecture Breaks Simulator State on Navigation
 
-**What goes wrong:** uPlot instance created inside React render, destroyed/recreated on every state update. Or uPlot not properly cleaned up on component unmount, causing memory leaks.
+**What goes wrong:**
+Switching between the Simulator tab and Optimizer tab unmounts and remounts the Simulator component. A running or paused simulation loses its RAF loop reference, its engine instance, or its Canvas context. The user returns to the simulator tab to find it reset or blank.
 
-**Prevention:**
-1. Use `uplot-react` wrapper (1.2.4) which handles lifecycle correctly.
-2. If writing custom hook: create uPlot in `useEffect`, destroy in cleanup. Never recreate on data updates -- use `uPlot.setData()` instead.
-3. Resize handling: listen for `ResizeObserver` on container, call `uPlot.setSize()`.
+**Why it happens:**
+React's default behavior unmounts components when they are no longer rendered. The existing simulator may not be designed to survive unmount/remount because in v1.0 there was only one view.
 
-**Phase:** Phase 2 (charts).
+**How to avoid:**
+Use `display: none` CSS toggling (or a `keepMounted` prop pattern) rather than conditional rendering for tab switching. The simulator component stays mounted; only its visibility changes. Alternatively, persist the engine reference in Zustand or a module-level singleton that survives component unmount.
+
+If using `React.lazy` for tab code splitting, ensure the simulator tab is NOT lazily loaded — it should be in the initial bundle since it's the primary feature.
+
+**Warning signs:**
+- Tab switching implemented as `{activeTab === 'simulator' && <Simulator />}`
+- The RAF loop is started in a `useEffect` with no persistence mechanism
+- No test for "switch to optimizer, switch back, simulation still running"
+
+**Phase to address:**
+Phase 2 (UI). Must be the first thing verified when implementing the tab UI.
 
 ---
 
-## Phase-Specific Warnings
+## Technical Debt Patterns
 
-| Phase Topic | Likely Pitfall | Mitigation |
-|-------------|---------------|------------|
-| Simulation Engine Core | Time conflation (#1), Queue performance (#2), Probe model (#3), Event overflow (#5), Float drift (#6), Determinism (#11) | Integer sim-time, binary heap, seedable PRNG, probe scheduling rules as foundational decisions. Deterministic tests before visualization. |
-| Pod State Machine | State transition errors (#9), Backlog ordering (#15) | Exhaustive state transition tests. NOT_READY vs RESTARTING semantics verified explicitly. |
-| Canvas Visualization | DPI scaling (#12) | Handle devicePixelRatio from day one. |
-| React Integration | State synchronization (#4), RAF starvation (#10) | Three-tier state. Canvas via ref. Time-box engine advances. |
-| Metrics & Charts | Memory growth (#8), uPlot lifecycle (#16) | Ring buffer with adaptive sampling. Use uplot-react wrapper. |
-| Speed Control | Speed change jumps (#13), High-speed queue load (#2) | Time-boxed advance, speed change on next frame. |
-| User Input | Parameter validation (#14), LB index (#7) | Input validation layer, documented LB behavior. |
+Shortcuts that seem reasonable but create long-term problems.
+
+| Shortcut | Immediate Benefit | Long-term Cost | When Acceptable |
+|----------|-------------------|----------------|-----------------|
+| Use weighted average latency for μ | Single M/M/c formula, easy to explain | Underestimates failure risk from slow-request tail; users get false confidence | Never — always compute slow-request ρ separately |
+| Skip probe overhead adjustment in M/M/c | Simpler math, faster to implement | Model diverges from simulator at high utilization; probe cascade not predicted | Never for this domain |
+| Share SimulationConfig store with optimizer | Zero new code | Cross-tab state contamination; user confusion when configs drift | Never |
+| Compute full sweep synchronously on every input change | Simple, immediate feedback | Main thread freeze on wide parameter ranges | Only with debounce AND range < 50 combinations |
+| Use a single "recommended config" without safety margins | Clean, simple UI | Misleads users into unsafe production deployments | Never — always show ρ and margin |
+| Hard-code Erlang C direct formula without stability guard | Matches textbook exactly | NaN/Infinity at high c or ρ; silent wrong results | Never without a `ρ >= 1` guard |
+
+---
+
+## Integration Gotchas
+
+Common mistakes when connecting the optimizer to the existing system.
+
+| Integration | Common Mistake | Correct Approach |
+|-------------|----------------|------------------|
+| Existing SimulationConfig type | Reuse existing type for optimizer inputs verbatim | Define a separate `OptimizerInput` type — may need fields like `slowRequestRatio` that are derived from `requestProfiles` but expressed differently |
+| Simulator's request profiles (array of latency/ratio objects) | Pass array directly to optimizer | Extract `slowRequestRatio` and `effectiveAvgLatency` as scalar inputs to the optimizer math; the array format is a UI concern, not a math concern |
+| Existing routing / navigation | Add React Router for tabs | The project has no router — use a simple `activeTab` state in App.tsx with CSS visibility; adding React Router is overengineering for two tabs |
+| Canvas context on tab switch | Canvas ref becomes stale after remount | Use `keepMounted` visibility pattern; do not recreate Canvas on tab return |
+| Zustand store | Add optimizer state to existing simulation store | Add a separate `useOptimizerStore` with its own slice to avoid entangling concerns |
+
+---
+
+## Performance Traps
+
+Patterns that work at small scale but fail as usage grows.
+
+| Trap | Symptoms | Prevention | When It Breaks |
+|------|----------|------------|----------------|
+| Full 2D parameter sweep on every input change | Slider drag causes visible jank | Debounce 200ms + chunk computation | Sweep size > 50 combinations |
+| Recomputing knee detection every render | Component re-renders cause visible stutter | Memoize sweep results; recompute only on input change, not on render | Any component that re-renders at >10Hz |
+| Plotting full sweep results without downsampling | Chart with 400 points causes initial render lag | Limit chart to 50 representative points via downsampling | Sweep size > 100 points |
+| Computing factorial directly for large c | NaN/Infinity at c >= 18 | Use iterative Erlang C recurrence | workersPerPod >= 18 |
+
+---
+
+## UX Pitfalls
+
+Common user experience mistakes in this domain.
+
+| Pitfall | User Impact | Better Approach |
+|---------|-------------|-----------------|
+| Showing raw ρ value without context | User doesn't know if 0.72 is good or bad | Show ρ on a color-coded scale with labels: green (<0.7), yellow (0.7-0.85), red (>0.85) |
+| Optimizer and simulator use different labels for same concept | User confused which tab is "right" | Align terminology: both call it "worker utilization", both use same units |
+| Knee point shown without the full curve | User cannot judge if the knee is meaningful | Always show the full cost-vs-stability curve; knee point is a highlight, not the whole output |
+| Recommending a config with no "Run in Simulator" CTA | User doesn't validate the recommendation | Prominent "Validate in Simulator" button that copies config and switches tabs |
+| Showing M/M/c output as if it predicts cascade timing | User expects to know "when" failure occurs | Label clearly: "Stability prediction (steady-state). For cascade timing, use the Simulator." |
+| Exposing all queuing theory parameters | Users who aren't ops engineers are overwhelmed | Derive probe overhead from existing probe config; expose only traffic-facing inputs |
+| No units on waiting time output | User doesn't know if "2.3" is ms or seconds | Always suffix units: "2.3 ms avg wait" |
+
+---
+
+## "Looks Done But Isn't" Checklist
+
+Things that appear complete but are missing critical pieces.
+
+- [ ] **Erlang C computation:** Looks correct in normal cases — verify with `c=1, rho=0.99`, `c=20, rho=0.8`, and `c=1, rho=1.01` (must return error/infinity indicator, not NaN)
+- [ ] **Probe adjustment:** Model appears to use worker count correctly — verify that probe period and timeout are factored into effective capacity calculation
+- [ ] **Knee detection:** Chart shows a knee point — verify by testing with a monotone curve (knee should be absent or flagged, not fabricated)
+- [ ] **Tab switching:** Switching to optimizer and back looks fine in dev — verify with a running simulation (engine should still be running, clock advancing after return)
+- [ ] **Slow-request modeling:** Optimizer accepts request profiles — verify that a config with 20% slow requests at 10s receives a different stability score than 1% slow at 10s (not identical)
+- [ ] **Safety margin:** Recommendation is shown — verify that a ρ=0.9 config shows a warning, not a green checkmark
+- [ ] **Optimizer/simulator independence:** Changing optimizer inputs — verify simulator config is unchanged until explicit "apply" action
+
+---
+
+## Recovery Strategies
+
+When pitfalls occur despite prevention, how to recover.
+
+| Pitfall | Recovery Cost | Recovery Steps |
+|---------|---------------|----------------|
+| Erlang C NaN at high c | LOW | Add `ρ >= 1` guard and switch to iterative form; 1-2 hours |
+| Model/simulator divergence confusing users | MEDIUM | Add explanatory copy and explicit framing to UI; existing math is still correct |
+| Knee detection false positives | MEDIUM | Replace Kneedle with percentile-threshold fallback for monotone curves; keep Kneedle for curved sections |
+| Optimizer state pollutes simulator | HIGH | Requires Zustand store refactor to separate slices; if caught early (Phase 2 start), ~4 hours; if caught after full UI is built, ~1 day |
+| Tab switching kills simulation | HIGH | Requires architecture change from conditional render to CSS visibility; if page-level routing was already built around unmounting, may require significant restructuring |
+| Bimodal latency mapped to single μ | MEDIUM | Add separate slow-request ρ calculation; surface in UI as additional metric |
+
+---
+
+## Pitfall-to-Phase Mapping
+
+How roadmap phases should address these pitfalls.
+
+| Pitfall | Prevention Phase | Verification |
+|---------|------------------|--------------|
+| Probe-as-worker-consumer ignored (#1) | Phase 1: Math Engine | Unit test: config with `timeoutSeconds < slowLatency` must score as "cascade-prone" |
+| Steady-state vs. transient framing (#2) | Phase 1 + Phase 2 UI | UI copy reviewed: optimizer labeled as steady-state screener, not cascade predictor |
+| Erlang C numerical instability (#3) | Phase 1: Math Engine | Unit tests at boundary values: c=20, ρ=0.99; no NaN or Infinity in output |
+| Optimizer/simulator contradiction (#4) | Phase 2: UI | User test: does the framing make clear why results may differ? |
+| Knee detection on bad curves (#5) | Phase 1: Math Engine | Test with monotone curve: knee detection falls back to percentile heuristic |
+| Parameter sweep blocking main thread (#6) | Phase 1 + Phase 2 | Profile: drag RPS slider; measure main thread block time < 16ms |
+| Bimodal latency to single μ (#7) | Phase 1: Math Engine | Test: 20% slow at 10s must produce higher risk score than 5% slow at 10s |
+| Optimizer state coupling (#8) | Phase 2: UI/State | Manual test: change optimizer inputs, verify simulator config unchanged |
+| Prescriptive recommendation (#9) | Phase 2: UI | Verify: ρ=0.9 config shows warning; recommendation includes safety margin |
+| Tab architecture breaks sim state (#10) | Phase 2: UI | Manual test: start simulation, switch to optimizer, return, verify simulation still running |
 
 ---
 
 ## Sources
 
-- Discrete event simulation patterns: established computer science (HIGH confidence)
-- Canvas rendering optimization: MDN Web Docs Canvas performance guidelines (HIGH confidence)
-- Kubernetes probe behavior: official K8s documentation on liveness/readiness probes (HIGH confidence)
-- React rendering model: React 19 documentation (HIGH confidence)
-- uPlot lifecycle: npm registry verified version 1.6.32, uplot-react 1.2.4 (HIGH confidence)
-- Priority queue implementations: standard data structures (HIGH confidence)
+- M/M/c pitfalls and Erlang C numerical instability: [Wikipedia M/M/c queue](https://en.wikipedia.org/wiki/M/M/c_queue), [Erlang C Formula Call Centers (PDF)](https://pdfs.semanticscholar.org/33d4/666e1dabe49ae29e99a69d7d504334b0774e.pdf)
+- M/M/c/K finite capacity behavior: [JETIR M/M/C/K paper](https://www.jetir.org/papers/JETIR1806510.pdf), [Springer OPSEARCH railway study](https://link.springer.com/article/10.1007/s12597-025-01041-6)
+- Steady-state assumption and bursty arrivals: [Simulation Modeling and Arena — Queuing Formulas](https://rossetti.github.io/RossettiArenaBook/app-qt-sec-formulas.html), [Introduction to Queueing Theory arXiv](https://arxiv.org/pdf/1307.2968)
+- Knee point detection pitfalls: [Kneedle paper](https://raghavan.usc.edu/papers/kneedle-simplex11.pdf), [Deep Learning Knee Detection arXiv 2024](https://arxiv.org/html/2409.15608v1), [kneed documentation](https://kneed.readthedocs.io/)
+- Optimizer vs. simulation divergence: [Simio — how do you know if something is optimized](https://www.simio.com/how-do-you-know-if-something-is-optimized-if-you-dont-simulate-it/), [MOSIMTEC — simulation vs optimization](https://mosimtec.com/simulation-vs-optimization/)
+- React lazy loading and tab patterns: [React code splitting docs](https://legacy.reactjs.org/docs/code-splitting.html), [GreatFrontEnd lazy loading guide](https://www.greatfrontend.com/blog/code-splitting-and-lazy-loading-in-react)
+- UX for optimization tools: [ShapeofAI — Parameters pattern](https://www.shapeof.ai/patterns/parameters), [NN/g Design Tradeoffs](https://www.nngroup.com/courses/design-tradeoffs/)
+- Queueing theory and utilization misconceptions: [LeSS — Flow and Queueing Theory](https://less.works/less/principles/queueing_theory)
+
+---
+*Pitfalls research for: v1.1 Statistical Optimizer — adding queuing theory math to existing discrete event simulator*
+*Researched: 2026-04-11*
