@@ -27,9 +27,10 @@ EKS 환경에서 동기(synchronous) worker 기반 Pod들이 느린 요청(slow 
 - [x] "요청 중단" 기능으로 복구 시간 측정 — Validated in Phase 3: Controls & Parameters
 - [x] 시뮬레이션 파라미터 UI (클러스터, 트래픽, 프로브, Request Profile 편집) — Validated in Phase 3: Controls & Parameters
 - [x] 시뮬레이션 라이프사이클 제어 (Start/Pause/Resume/Reset/Stop Requests) — Validated in Phase 3: Controls & Parameters
+- [x] 결과 리포트 (임계점, profile별 평균 응답시간, 503 비율, 복구시간) — Validated in Phase 4: Report
 
 ### Active
-- [ ] 결과 리포트 (임계점, profile별 평균 응답시간, 503 비율, 복구시간)
+(No active requirements — all v1.0 milestone requirements validated)
 
 ### Out of Scope
 
@@ -77,4 +78,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-04-11 after Phase 3 completion — Zustand store, parameter UI, playback controls, speed control, status display verified*
+*Last updated: 2026-04-11 after Phase 4 completion — Post-simulation report with degradation timeline, summary cards, per-profile response times. All v1.0 milestone requirements validated.*
