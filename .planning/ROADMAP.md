@@ -32,9 +32,9 @@ Decimal phases appear between their surrounding integers in numeric order.
 **Plans**: 3 plans
 
 Plans:
-- [ ] 01-01-PLAN.md — Project scaffold + types + priority queue + RNG
-- [ ] 01-02-PLAN.md — Pod state machine + Load Balancer
-- [ ] 01-03-PLAN.md — MetricsCollector + SimulationEngine + integration tests
+- [x] 01-01-PLAN.md — Project scaffold + types + priority queue + RNG
+- [x] 01-02-PLAN.md — Pod state machine + Load Balancer
+- [x] 01-03-PLAN.md — MetricsCollector + SimulationEngine + integration tests
 
 ### Phase 2: Visualization
 **Goal**: Users can watch the simulation unfold visually -- pod states rendered on Canvas and metrics plotted as time-series charts in real time
