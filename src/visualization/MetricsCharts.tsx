@@ -173,7 +173,7 @@ export function MetricsCharts({
         <UplotReact
           options={workerUsageOpts}
           data={safeWorkerUsage as uPlot.AlignedData}
-          resetScales={false}
+          resetScales={true}
           onCreate={storeChart(0)}
         />
       </div>
@@ -181,7 +181,7 @@ export function MetricsCharts({
         <UplotReact
           options={readyPodsOpts}
           data={safeReadyPods as uPlot.AlignedData}
-          resetScales={false}
+          resetScales={true}
           onCreate={storeChart(1)}
         />
       </div>
@@ -189,7 +189,7 @@ export function MetricsCharts({
         <UplotReact
           options={rate503Opts}
           data={safeRate503 as uPlot.AlignedData}
-          resetScales={false}
+          resetScales={true}
           onCreate={storeChart(2)}
         />
       </div>
@@ -197,7 +197,7 @@ export function MetricsCharts({
         <UplotReact
           options={responseTimeOpts}
           data={safeResponseTime as uPlot.AlignedData}
-          resetScales={false}
+          resetScales={true}
           onCreate={storeChart(3)}
         />
       </div>

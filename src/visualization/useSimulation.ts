@@ -18,6 +18,7 @@ const EMPTY_DATA: AlignedData = [[], []];
 export function useSimulation(config: SimulationConfig) {
   const loopRef = useRef<SimulationLoop | null>(null);
   const rendererRef = useRef<PodRenderer | null>(null);
+  const canvasDimsRef = useRef<{ width: number; height: number }>({ width: 0, height: 0 });
   const [chartData, setChartData] = useState<ChartData>({
     workerUsage: EMPTY_DATA,
     readyPods: EMPTY_DATA,
@@ -35,6 +36,14 @@ export function useSimulation(config: SimulationConfig) {
       onChartUpdate: (data) => setChartData(data),
     });
     loopRef.current = loop;
+
+    // Child effects (PodCanvas) run before parent effects — renderer may already exist
+    if (rendererRef.current) {
+      loop.setPodRenderer(rendererRef.current);
+    }
+    if (canvasDimsRef.current.width > 0) {
+      loop.setCanvasDimensions(canvasDimsRef.current.width, canvasDimsRef.current.height);
+    }
 
     // Detect dark mode
     const darkQuery = window.matchMedia('(prefers-color-scheme: dark)');
@@ -62,6 +71,7 @@ export function useSimulation(config: SimulationConfig) {
 
   // Update canvas dimensions (called by PodCanvas on resize)
   const onCanvasResize = useCallback((width: number, height: number) => {
+    canvasDimsRef.current = { width, height };
     if (loopRef.current) {
       loopRef.current.setCanvasDimensions(width, height);
     }
