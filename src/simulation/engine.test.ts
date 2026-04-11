@@ -372,6 +372,62 @@ describe('SimulationEngine', () => {
     });
   });
 
+  describe('critical events tracking', () => {
+    it('records firstReadinessFailure after slow-request degradation', () => {
+      const engine = new SimulationEngine(makeConfig({
+        podCount: 2,
+        workersPerPod: 2,
+        maxBacklogPerPod: 5,
+        rps: 50,
+        requestProfiles: [{ name: 'slow', latencyMs: 30000, ratio: 1.0, color: '#F44336' }],
+        livenessProbe: { periodSeconds: 100, timeoutSeconds: 1, failureThreshold: 100, successThreshold: 1 },
+        readinessProbe: { periodSeconds: 5, timeoutSeconds: 2, failureThreshold: 3, successThreshold: 1 },
+        initializeTimeMs: 5000,
+        seed: 42,
+      }));
+
+      // Run until readiness failures happen
+      for (let t = 0; t < 40; t++) {
+        engine.step(1000);
+      }
+
+      const events = engine.getCriticalEvents();
+      expect(events.firstReadinessFailure).not.toBeNull();
+      expect(events.firstReadinessFailurePodId).not.toBeNull();
+    });
+
+    it('records stopRequestsTime and recoveredTime after full recovery', () => {
+      const engine = new SimulationEngine(makeConfig({
+        podCount: 2,
+        workersPerPod: 2,
+        maxBacklogPerPod: 5,
+        rps: 50,
+        requestProfiles: [{ name: 'slow', latencyMs: 30000, ratio: 1.0, color: '#F44336' }],
+        livenessProbe: { periodSeconds: 5, timeoutSeconds: 2, failureThreshold: 3, successThreshold: 1 },
+        readinessProbe: { periodSeconds: 5, timeoutSeconds: 2, failureThreshold: 3, successThreshold: 1 },
+        initializeTimeMs: 5000,
+        seed: 42,
+      }));
+
+      // Run until pods are degraded
+      for (let t = 0; t < 40; t++) {
+        engine.step(1000);
+      }
+
+      engine.stopRequests();
+
+      // Run for recovery
+      for (let t = 0; t < 60; t++) {
+        engine.step(1000);
+      }
+
+      const events = engine.getCriticalEvents();
+      expect(events.stopRequestsTime).not.toBeNull();
+      expect(events.recoveredTime).not.toBeNull();
+      expect(events.recoveredTime!).toBeGreaterThan(events.stopRequestsTime!);
+    });
+  });
+
   describe('scenario: 0% slow requests -> stable', () => {
     it('all pods stay READY for 60+ seconds', () => {
       const engine = new SimulationEngine(makeConfig({

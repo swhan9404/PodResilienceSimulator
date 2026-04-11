@@ -3,12 +3,14 @@ import {
   type SimulationConfig,
   type SimulationSnapshot,
   type ActiveRequest,
+  type CriticalEvents,
   PodState,
 } from './types';
 import { MinHeap } from './priority-queue';
 import { Pod } from './pod';
 import { LoadBalancer, RoundRobinStrategy } from './load-balancer';
 import { MetricsCollector } from './metrics';
+import { CriticalEventTracker } from './CriticalEventTracker';
 import { createRng, selectProfile } from './rng';
 
 export class SimulationEngine {
@@ -17,6 +19,7 @@ export class SimulationEngine {
   private pods: Pod[];
   private loadBalancer: LoadBalancer;
   private metrics: MetricsCollector;
+  private criticalEvents: CriticalEventTracker;
   private rng: () => number;
   private config: SimulationConfig;
   private nextRequestId: number = 1;
@@ -38,6 +41,7 @@ export class SimulationEngine {
     this.rng = createRng(config.seed);
     this.eventQueue = new MinHeap<SimEvent>((a, b) => a.time - b.time);
     this.metrics = new MetricsCollector();
+    this.criticalEvents = new CriticalEventTracker();
 
     this.pods = [];
     for (let i = 0; i < config.podCount; i++) {
@@ -101,6 +105,7 @@ export class SimulationEngine {
 
     if (this.phase === 'stopped_requests' && readyCount === this.config.podCount) {
       this.phase = 'recovered';
+      this.criticalEvents.recordRecovered(this.clock);
     }
   }
 
@@ -301,6 +306,7 @@ export class SimulationEngine {
 
   private handlePodRestart(event: SimEvent): void {
     const pod = this.pods[event.podId!];
+    this.criticalEvents.recordLivenessRestart(this.clock, pod.id);
     const droppedCount = pod.restart();
 
     if (droppedCount > 0) {
@@ -356,6 +362,12 @@ export class SimulationEngine {
         podId: pod.id,
         generation: pod.generation,
       });
+    }
+    if (probeResult.action === 'remove_from_lb') {
+      this.criticalEvents.recordReadinessFailure(this.clock, pod.id);
+      if (this.loadBalancer.getReadyCount() === 0) {
+        this.criticalEvents.recordAllPodsDown(this.clock);
+      }
     }
     // remove_from_lb and add_to_lb are handled by Pod.recordProbeResult
     // changing pod.state. LB reads pod.state on selectPod.
@@ -439,6 +451,7 @@ export class SimulationEngine {
     this.rps = 0;
     if (this.phase === 'running') {
       this.phase = 'stopped_requests';
+      this.criticalEvents.recordStopRequests(this.clock);
     }
   }
 
@@ -457,6 +470,10 @@ export class SimulationEngine {
       metrics: this.metrics.getSamples(),
       phase: this.phase,
     };
+  }
+
+  getCriticalEvents(): CriticalEvents {
+    return this.criticalEvents.getEvents();
   }
 
   getClock(): number {

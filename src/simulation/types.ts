@@ -123,6 +123,33 @@ export interface SimulationSnapshot {
   phase: 'running' | 'stopped_requests' | 'recovered' | 'finished';
 }
 
+// --- Critical Events (per RPT-01) ---
+export interface CriticalEvents {
+  firstReadinessFailure: number | null;
+  firstReadinessFailurePodId: number | null;
+  firstLivenessRestart: number | null;
+  firstLivenessRestartPodId: number | null;
+  allPodsDown: number | null;
+  stopRequestsTime: number | null;
+  recoveredTime: number | null;
+}
+
+// --- Report Data (per RPT-02) ---
+export interface ReportData {
+  criticalEvents: CriticalEvents;
+  recoveryTimeMs: number;
+  totalRequests: number;
+  total503s: number;
+  droppedByRestart: number;
+  rate503Percent: number;
+  perProfileAvgResponseTime: Array<{
+    profileName: string;
+    avgResponseTimeMs: number;
+    requestCount: number;
+  }>;
+  simulationDurationMs: number;
+}
+
 // --- Load Balancer Strategy (per D-10, LB-03) ---
 export interface LoadBalancerStrategy {
   name: string;
