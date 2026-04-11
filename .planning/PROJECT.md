@@ -23,10 +23,12 @@ EKS 환경에서 동기(synchronous) worker 기반 Pod들이 느린 요청(slow 
 - [x] 클러스터 설정 (podCount, workersPerPod, maxBacklogPerPod, rps) — Validated in Phase 1: Simulation Engine
 - [x] 실시간 Canvas 기반 Pod 상태 시각화 (worker 점유, backlog, probe 상태) — Validated in Phase 2: Visualization
 - [x] 실시간 메트릭 차트 (worker usage, ready pods, 503 rate, 응답시간) — Validated in Phase 2: Visualization
+- [x] 배속 조절 (0.5x ~ 100x) — Validated in Phase 3: Controls & Parameters
+- [x] "요청 중단" 기능으로 복구 시간 측정 — Validated in Phase 3: Controls & Parameters
+- [x] 시뮬레이션 파라미터 UI (클러스터, 트래픽, 프로브, Request Profile 편집) — Validated in Phase 3: Controls & Parameters
+- [x] 시뮬레이션 라이프사이클 제어 (Start/Pause/Resume/Reset/Stop Requests) — Validated in Phase 3: Controls & Parameters
 
 ### Active
-- [ ] 배속 조절 (0.5x ~ 100x)
-- [ ] "요청 중단" 기능으로 복구 시간 측정
 - [ ] 결과 리포트 (임계점, profile별 평균 응답시간, 503 비율, 복구시간)
 
 ### Out of Scope
@@ -75,4 +77,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-04-11 after Phase 2 completion — Canvas pod visualization + uPlot charts verified*
+*Last updated: 2026-04-11 after Phase 3 completion — Zustand store, parameter UI, playback controls, speed control, status display verified*
