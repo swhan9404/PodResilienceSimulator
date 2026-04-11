@@ -3,12 +3,12 @@ import { SimulationEngine } from '../simulation/engine';
 import { SimulationLoop } from '../visualization/SimulationLoop';
 import { MetricsChartManager } from '../visualization/MetricsChartManager';
 import type { AlignedData } from '../visualization/MetricsChartManager';
-import type { SimulationConfig, ProbeConfig, RequestProfile } from '../simulation/types';
+import type { SimulationConfig, ProbeConfig, RequestProfile, ReportData } from '../simulation/types';
 import type { PodRenderer } from '../visualization/PodRenderer';
 
 // --- Types ---
 
-type PlaybackState = 'idle' | 'running' | 'paused' | 'stopped_requests';
+export type PlaybackState = 'idle' | 'running' | 'paused' | 'stopped_requests' | 'recovered';
 
 interface ChartData {
   workerUsage: AlignedData;
@@ -36,6 +36,9 @@ interface SimulationStore {
 
   // Chart data (updated from loop callback)
   chartData: ChartData;
+
+  // Report data (frozen at recovery)
+  reportData: ReportData | null;
 
   // Engine refs (not serializable, per D-10)
   engineRef: SimulationEngine | null;
@@ -121,6 +124,9 @@ export const useSimulationStore = create<SimulationStore>()((set, get) => ({
   // Chart data
   chartData: EMPTY_CHART_DATA,
 
+  // Report data
+  reportData: null,
+
   // Engine refs
   engineRef: null,
   loopRef: null,
@@ -160,6 +166,50 @@ export const useSimulationStore = create<SimulationStore>()((set, get) => ({
           status503: snapshot.stats.total503s,
           statusReadyPods: snapshot.stats.readyPodCount,
         });
+
+        // Detect recovery and compute report data
+        if (snapshot.phase === 'recovered' && get().playback !== 'recovered') {
+          const criticalEvents = engine.getCriticalEvents();
+          const samples = snapshot.metrics;
+
+          // Aggregate per-profile response times across all samples
+          const profileTotals: Record<string, { sum: number; count: number }> = {};
+          for (const sample of samples) {
+            for (const [name, data] of Object.entries(sample.perProfileResponseTime)) {
+              if (!profileTotals[name]) profileTotals[name] = { sum: 0, count: 0 };
+              profileTotals[name].sum += data.sum;
+              profileTotals[name].count += data.count;
+            }
+          }
+          const perProfileAvgResponseTime = Object.entries(profileTotals)
+            .filter(([name]) => !name.endsWith('_probe'))
+            .map(([profileName, { sum, count }]) => ({
+              profileName,
+              avgResponseTimeMs: count > 0 ? Math.round(sum / count) : 0,
+              requestCount: count,
+            }))
+            .sort((a, b) => b.requestCount - a.requestCount);
+
+          const recoveryTimeMs = (criticalEvents.recoveredTime ?? 0) - (criticalEvents.stopRequestsTime ?? 0);
+          const totalReqs = snapshot.stats.totalRequests;
+          const total503 = snapshot.stats.total503s;
+
+          const reportData: ReportData = {
+            criticalEvents,
+            recoveryTimeMs,
+            totalRequests: totalReqs,
+            total503s: total503,
+            droppedByRestart: snapshot.stats.droppedByRestart,
+            rate503Percent: totalReqs > 0 ? Math.round((total503 / totalReqs) * 1000) / 10 : 0,
+            perProfileAvgResponseTime,
+            simulationDurationMs: snapshot.clock,
+          };
+
+          set({ playback: 'recovered', reportData });
+
+          // Stop the loop -- simulation is done
+          get().loopRef?.stop();
+        }
       },
     });
 
@@ -213,6 +263,7 @@ export const useSimulationStore = create<SimulationStore>()((set, get) => ({
       status503: 0,
       statusReadyPods: 0,
       chartData: EMPTY_CHART_DATA,
+      reportData: null,
     });
   },
 

@@ -35,6 +35,9 @@ export function PlaybackControls() {
       {playback === 'stopped_requests' && (
         <button className={btnGhostDestructive} onClick={reset}>Reset</button>
       )}
+      {playback === 'recovered' && (
+        <button className={btnGhostDestructive} onClick={reset}>Reset</button>
+      )}
     </div>
   );
 }
