@@ -340,17 +340,19 @@ function deriveRange(lambda: number, mu: number): { minWorkers: number; maxWorke
 | A3 | Smoothing spline is unnecessary for Kneedle on sweep data | Don't Hand-Roll | Low -- sweep data is deterministic (no noise). If results are jagged, smoothing can be added later. |
 | A4 | Probe correction as simple duty-cycle subtraction (D-01) is accurate enough vs simulation | Phase Requirements / MATH-02 | Medium -- the simulator models probe-worker interaction in detail (backlog displacement, timeouts). The math engine uses a linear approximation. Success criterion #2 only requires "higher utilization than naive," which duty-cycle subtraction guarantees. |
 
-## Open Questions
+## Open Questions (RESOLVED)
 
 1. **What is the right auto-range multiplier for sweep bounds?**
    - What we know: Minimum workers for stability = ceil(lambda/mu). The knee typically occurs at 1.2-2x this value.
    - What's unclear: The exact multiplier that reliably captures the knee for all realistic input combinations.
    - Recommendation: Start with 0.5x-2.5x of minimum, validate against the default config (podCount=270, workersPerPod=4, rps=2350). Adjust if tests show the knee is outside the range.
+   - **RESOLVED:** 0.5x–2.5x multiplier adopted in computeSweep auto-range derivation (05-02-PLAN.md).
 
 2. **Should the sweep function accept a pre-computed range or always auto-derive?**
    - What we know: D-07 says auto-derived. Phase 7 (UI) may want to let users override.
    - What's unclear: Whether to support both modes now or defer override to Phase 7.
    - Recommendation: Accept optional range overrides in the function signature but default to auto-derivation. This adds ~3 lines and prevents a refactor later.
+   - **RESOLVED:** Optional rangeOverride parameter added to computeSweep signature, defaulting to auto-derivation per D-07 (05-02-PLAN.md).
 
 ## Environment Availability
 
