@@ -39,7 +39,10 @@ Full archive: `.planning/milestones/v1.0-ROADMAP.md`
   3. Parameter sweep over workersPerPod x podCount range produces a sorted array of stability metrics for every combination
   4. Knee point detection identifies the cost-efficiency inflection point on the sweep curve, and falls back gracefully when no knee exists (monotone/flat curves)
   5. Erlang C computation produces correct results at c=20, rho=0.99 with no NaN or Infinity
-**Plans**: TBD
+**Plans**: 2 plans
+Plans:
+- [ ] 05-01-PLAN.md — M/M/c/K queuing core with probe correction and textbook verification
+- [ ] 05-02-PLAN.md — Parameter sweep, knee point detection, and barrel re-exports
 
 ### Phase 6: Tab Navigation
 **Goal**: Users can switch between simulator and optimizer views without losing state in either
@@ -74,6 +77,6 @@ Phases execute in numeric order: 5 -> 6 -> 7
 | 2. Visualization | v1.0 | 4/4 | Complete | 2026-04-11 |
 | 3. Controls & Parameters | v1.0 | 2/2 | Complete | 2026-04-11 |
 | 4. Report | v1.0 | 2/2 | Complete | 2026-04-11 |
-| 5. Math Engine | v1.1 | 0/? | Not started | - |
+| 5. Math Engine | v1.1 | 0/2 | Planned | - |
 | 6. Tab Navigation | v1.1 | 0/? | Not started | - |
 | 7. Optimizer UI | v1.1 | 0/? | Not started | - |
