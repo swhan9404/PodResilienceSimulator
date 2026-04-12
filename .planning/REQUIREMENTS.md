@@ -31,8 +31,8 @@ Deferred to future release. Tracked but not in current roadmap.
 
 ### Advanced Visualization
 
-- **VIZ-01**: pods × workers 2D 히트맵으로 안정성을 격자 시각화
-- **VIZ-02**: ±slow request 비율 민감도 분석 테이블
+- **VIZ-01**: pods x workers 2D 히트맵으로 안정성을 격자 시각화
+- **VIZ-02**: +/-slow request 비율 민감도 분석 테이블
 
 ### Advanced Modeling
 
@@ -55,21 +55,21 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| MATH-01 | — | Pending |
-| MATH-02 | — | Pending |
-| MATH-03 | — | Pending |
-| MATH-04 | — | Pending |
-| OPTUI-01 | — | Pending |
-| OPTUI-02 | — | Pending |
-| OPTUI-03 | — | Pending |
-| OPTUI-04 | — | Pending |
-| NAV-01 | — | Pending |
+| MATH-01 | Phase 5 | Pending |
+| MATH-02 | Phase 5 | Pending |
+| MATH-03 | Phase 5 | Pending |
+| MATH-04 | Phase 5 | Pending |
+| OPTUI-01 | Phase 7 | Pending |
+| OPTUI-02 | Phase 7 | Pending |
+| OPTUI-03 | Phase 7 | Pending |
+| OPTUI-04 | Phase 7 | Pending |
+| NAV-01 | Phase 6 | Pending |
 
 **Coverage:**
 - v1.1 requirements: 9 total
-- Mapped to phases: 0
-- Unmapped: 9 ⚠️
+- Mapped to phases: 9
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-04-12*
-*Last updated: 2026-04-12 after initial definition*
+*Last updated: 2026-04-11 after roadmap creation*
