@@ -41,8 +41,8 @@ Full archive: `.planning/milestones/v1.0-ROADMAP.md`
   5. Erlang C computation produces correct results at c=20, rho=0.99 with no NaN or Infinity
 **Plans**: 2 plans
 Plans:
-- [ ] 05-01-PLAN.md — M/M/c/K queuing core with probe correction and textbook verification
-- [ ] 05-02-PLAN.md — Parameter sweep, knee point detection, and barrel re-exports
+- [x] 05-01-PLAN.md — M/M/c/K queuing core with probe correction and textbook verification
+- [x] 05-02-PLAN.md — Parameter sweep, knee point detection, and barrel re-exports
 
 ### Phase 6: Tab Navigation
 **Goal**: Users can switch between simulator and optimizer views without losing state in either
