@@ -54,6 +54,8 @@ EKS 환경에서 동기(synchronous) worker 기반 Pod들이 느린 요청(slow 
 **v1.0 MVP shipped 2026-04-11.** ~4,967 LOC TypeScript/React, 137 tests passing.
 Tech stack: React 19 + TypeScript + Vite 8 + Zustand 5 + uPlot + Canvas 2D + Tailwind CSS 4.
 
+**Phase 5 complete (2026-04-12):** Math engine implemented — M/M/c/K queuing model with probe correction, parameter sweep with auto-range derivation, and Kneedle knee point detection. 28 optimizer tests passing. Pure TypeScript, no new dependencies.
+
 ## Context
 
 - EKS 환경에서 동기 worker (gunicorn sync 등) 기반 서비스 운영 시, slow request로 인한 서비스 장애를 사전에 시뮬레이션하려는 목적
@@ -93,4 +95,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-04-12 after v1.1 milestone start*
+*Last updated: 2026-04-12 after Phase 5 (Math Engine) completion*
