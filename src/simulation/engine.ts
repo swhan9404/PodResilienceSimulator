@@ -23,6 +23,7 @@ export class SimulationEngine {
   private rng: () => number;
   private config: SimulationConfig;
   private nextRequestId: number = 1;
+  private nextArrivalTime: number = 0;
   private rps: number;
   private phase: 'running' | 'stopped_requests' | 'recovered' | 'finished' = 'running';
 
@@ -114,6 +115,10 @@ export class SimulationEngine {
     if (event.podId !== undefined && event.generation !== undefined) {
       const pod = this.pods[event.podId];
       if (event.generation !== pod.generation) {
+        // Clean up requestMeta for stale REQUEST_COMPLETE events
+        if (event.type === 'REQUEST_COMPLETE' && event.requestId !== undefined) {
+          this.requestMeta.delete(event.requestId);
+        }
         return;
       }
     }
@@ -186,9 +191,11 @@ export class SimulationEngine {
 
     // Self-schedule next arrival
     if (this.rps > 0) {
-      const intervalMs = Math.round(1000 / this.rps);
+      // Keep a fractional arrival clock so the engine can model >1000 RPS.
+      // Multiple arrivals may share the same integer millisecond bucket.
+      this.nextArrivalTime += 1000 / this.rps;
       this.eventQueue.push({
-        time: this.clock + Math.max(intervalMs, 1),
+        time: Math.max(this.clock, Math.floor(this.nextArrivalTime + Number.EPSILON)),
         type: 'REQUEST_ARRIVAL',
       });
     }
@@ -307,14 +314,24 @@ export class SimulationEngine {
   private handlePodRestart(event: SimEvent): void {
     const pod = this.pods[event.podId!];
     this.criticalEvents.recordLivenessRestart(this.clock, pod.id);
+
+    // Collect request IDs BEFORE restart clears workers/backlog
+    for (const worker of pod.workers) {
+      if (worker && !worker.isProbe) {
+        this.requestMeta.delete(worker.requestId);
+      }
+    }
+    for (const item of pod.backlog) {
+      if (!item.isProbe) {
+        this.requestMeta.delete(item.requestId);
+      }
+    }
+
     const droppedCount = pod.restart();
 
     if (droppedCount > 0) {
       this.metrics.record({ type: 'dropped_by_restart', count: droppedCount });
     }
-
-    // Clean up request metadata for any requests that were in this pod
-    // (workers and backlog were cleared by restart)
 
     // Schedule init complete
     this.eventQueue.push({
@@ -423,6 +440,12 @@ export class SimulationEngine {
 
     const workerIndex = pod.workers.findIndex(w => w !== null && w.requestId === dequeued.requestId);
     if (workerIndex >= 0) {
+      // Recalculate endTime: request was waiting in backlog, so processing
+      // starts now (this.clock), not at the original startTime.
+      const latencyMs = dequeued.endTime - dequeued.startTime;
+      dequeued.startTime = this.clock;
+      dequeued.endTime = this.clock + latencyMs;
+
       this.eventQueue.push({
         time: dequeued.endTime,
         type: dequeued.isProbe ? 'PROBE_COMPLETE' : 'REQUEST_COMPLETE',
@@ -482,5 +505,9 @@ export class SimulationEngine {
 
   getEventQueueSize(): number {
     return this.eventQueue.size;
+  }
+
+  getCumulativePerProfileResponseTime(): Record<string, { sum: number; count: number }> {
+    return this.metrics.getCumulativePerProfileResponseTime();
   }
 }

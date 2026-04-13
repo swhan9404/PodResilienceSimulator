@@ -187,6 +187,34 @@ describe('MetricsCollector', () => {
     });
   });
 
+  describe('sample cap (MAX_SAMPLES)', () => {
+    it('evicts oldest samples when exceeding cap', () => {
+      // MAX_SAMPLES is 300. Generate 400 samples.
+      for (let t = 1; t <= 400; t++) {
+        collector.record({ type: 'request_complete', profileName: 'a', responseTime: 100 });
+        collector.maybeSample(t * 1000, 3, 4, 12);
+      }
+
+      const samples = collector.getSamples();
+      expect(samples.length).toBeLessThanOrEqual(300);
+      // Oldest sample should be from later in the sequence, not t=1000
+      expect(samples[0].time).toBeGreaterThan(1000);
+    });
+
+    it('preserves cumulative per-profile data after sample eviction', () => {
+      // Record data across 400 seconds (exceeds 300 cap)
+      for (let t = 1; t <= 400; t++) {
+        collector.record({ type: 'request_complete', profileName: 'slow', responseTime: 100 });
+        collector.maybeSample(t * 1000, 3, 4, 12);
+      }
+
+      // Cumulative totals should reflect ALL 400 records, not just the 300 retained samples
+      const cumulative = collector.getCumulativePerProfileResponseTime();
+      expect(cumulative['slow'].count).toBe(400);
+      expect(cumulative['slow'].sum).toBe(40000);
+    });
+  });
+
   describe('custom sample interval', () => {
     it('respects custom interval', () => {
       const c = new MetricsCollector(500);

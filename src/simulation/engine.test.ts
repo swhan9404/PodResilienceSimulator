@@ -62,6 +62,19 @@ describe('SimulationEngine', () => {
       const snap = engine.getSnapshot();
       expect(snap.stats.totalRequests).toBe(0);
     });
+
+    it('supports RPS above 1000 by scheduling multiple arrivals in the same millisecond', () => {
+      const config = makeConfig({ rps: 2350 });
+      const engine = new SimulationEngine(config);
+
+      engine.step(1000);
+      const snap = engine.getSnapshot();
+
+      // Integer-ms buckets allow a small amount of same-ms burstiness near the boundary,
+      // but the engine should stay close to the configured 2350 RPS instead of capping at 1000.
+      expect(snap.stats.totalRequests).toBeGreaterThan(2300);
+      expect(snap.stats.totalRequests).toBeLessThanOrEqual(2360);
+    });
   });
 
   describe('determinism (SIM-03, SIM-04)', () => {
@@ -425,6 +438,63 @@ describe('SimulationEngine', () => {
       expect(events.stopRequestsTime).not.toBeNull();
       expect(events.recoveredTime).not.toBeNull();
       expect(events.recoveredTime!).toBeGreaterThan(events.stopRequestsTime!);
+    });
+  });
+
+  describe('memory safety: requestMeta cleanup on pod restart', () => {
+    it('does not leak requestMeta entries across pod restarts', () => {
+      // High RPS with slow requests ensures pods fill up and restart,
+      // which previously leaked requestMeta entries.
+      const engine = new SimulationEngine(makeConfig({
+        podCount: 3,
+        workersPerPod: 4,
+        maxBacklogPerPod: 10,
+        rps: 200,
+        requestProfiles: [{ name: 'slow', latencyMs: 30000, ratio: 1.0, color: '#F44336' }],
+        livenessProbe: { periodSeconds: 5, timeoutSeconds: 1, failureThreshold: 3, successThreshold: 1 },
+        readinessProbe: { periodSeconds: 5, timeoutSeconds: 1, failureThreshold: 1, successThreshold: 2 },
+        initializeTimeMs: 5000,
+        seed: 42,
+      }));
+
+      // Run for enough time that pods restart multiple times
+      for (let t = 0; t < 120; t++) {
+        engine.step(1000);
+      }
+
+      const snap = engine.getSnapshot();
+      // Verify pods actually restarted (precondition for this test)
+      const totalRestarts = snap.pods.reduce((sum, p) => sum + p.generation, 0);
+      expect(totalRestarts).toBeGreaterThan(0);
+
+      // requestMeta should only contain entries for currently in-flight requests
+      // (workers + backlog across all pods), not leaked entries from past restarts.
+      // Max possible in-flight: pods * (workers + backlog) = 3 * (4 + 10) = 42
+      const maxInFlight = 3 * (4 + 10);
+      // Access private field for testing via cast
+      const metaSize = (engine as unknown as { requestMeta: Map<number, unknown> }).requestMeta.size;
+      expect(metaSize).toBeLessThanOrEqual(maxInFlight);
+    });
+  });
+
+  describe('memory safety: metrics samples capped', () => {
+    it('does not grow samples beyond MAX_SAMPLES', () => {
+      const engine = new SimulationEngine(makeConfig({
+        podCount: 1,
+        workersPerPod: 4,
+        rps: 10,
+        requestProfiles: [{ name: 'fast', latencyMs: 50, ratio: 1.0, color: '#4CAF50' }],
+      }));
+
+      // Run for 600 simulated seconds (600 samples at 1s interval)
+      for (let t = 0; t < 600; t++) {
+        engine.step(1000);
+      }
+
+      const snap = engine.getSnapshot();
+      // Samples should be capped at 300 (MAX_SAMPLES), not 600
+      expect(snap.metrics.length).toBeLessThanOrEqual(300);
+      expect(snap.metrics.length).toBeGreaterThan(0);
     });
   });
 

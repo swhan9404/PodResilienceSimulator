@@ -79,17 +79,20 @@ export const EMPTY_CHART_DATA: ChartData = {
 // --- Default config with pre-normalization ratios (D-03) ---
 
 const DEFAULT_CONFIG: SimulationConfig = {
-  podCount: 5,
+  podCount: 270,
   workersPerPod: 4,
-  maxBacklogPerPod: 10,
-  rps: 50,
+  maxBacklogPerPod: 64,
+  rps: 2350,
   requestProfiles: [
-    { name: 'normal', latencyMs: 200, ratio: 7, color: '#3B82F6' },
-    { name: 'slow', latencyMs: 5000, ratio: 3, color: '#F97316' },
+    { name: 'cart_core', latencyMs: 180, ratio: 43.85, color: '#2563EB' },
+    { name: 'mutation_aux', latencyMs: 260, ratio: 28.61, color: '#F97316' },
+    { name: 'price_summary', latencyMs: 100, ratio: 22.36, color: '#14B8A6' },
+    { name: 'validate', latencyMs: 270, ratio: 3.71, color: '#EAB308' },
+    { name: 'finalize', latencyMs: 50, ratio: 1.46, color: '#EF4444' },
   ],
-  livenessProbe: { periodSeconds: 10, timeoutSeconds: 1, failureThreshold: 3, successThreshold: 1 },
-  readinessProbe: { periodSeconds: 5, timeoutSeconds: 1, failureThreshold: 3, successThreshold: 1 },
-  initializeTimeMs: 30000,
+  livenessProbe: { periodSeconds: 10, timeoutSeconds: 3, failureThreshold: 5, successThreshold: 1 },
+  readinessProbe: { periodSeconds: 5, timeoutSeconds: 1, failureThreshold: 1, successThreshold: 2 },
+  initializeTimeMs: 10000,
   seed: 42,
 };
 
@@ -170,17 +173,10 @@ export const useSimulationStore = create<SimulationStore>()((set, get) => ({
         // Detect recovery and compute report data
         if (snapshot.phase === 'recovered' && get().playback !== 'recovered') {
           const criticalEvents = engine.getCriticalEvents();
-          const samples = snapshot.metrics;
 
-          // Aggregate per-profile response times across all samples
-          const profileTotals: Record<string, { sum: number; count: number }> = {};
-          for (const sample of samples) {
-            for (const [name, data] of Object.entries(sample.perProfileResponseTime)) {
-              if (!profileTotals[name]) profileTotals[name] = { sum: 0, count: 0 };
-              profileTotals[name].sum += data.sum;
-              profileTotals[name].count += data.count;
-            }
-          }
+          // Use cumulative per-profile response time totals from engine
+          // (not re-aggregated from samples, which are now capped)
+          const profileTotals = engine.getCumulativePerProfileResponseTime();
           const perProfileAvgResponseTime = Object.entries(profileTotals)
             .filter(([name]) => !name.endsWith('_probe'))
             .map(([profileName, { sum, count }]) => ({

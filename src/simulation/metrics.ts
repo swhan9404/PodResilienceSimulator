@@ -19,10 +19,14 @@ export class MetricsCollector {
   private lastSampleTime: number = 0;
   private samples: MetricsSample[] = [];
   private currentBucket: MetricsBucket;
+  private static readonly MAX_SAMPLES = 300; // 5 minutes at 1s intervals
 
   totalRequests: number = 0;
   total503s: number = 0;
   droppedByRestart: number = 0;
+
+  // Cumulative per-profile response time totals (survives sample eviction)
+  cumulativePerProfileResponseTime: Record<string, { sum: number; count: number }> = {};
 
   constructor(sampleIntervalMs: number = 1000) {
     this.sampleIntervalMs = sampleIntervalMs;
@@ -77,13 +81,33 @@ export class MetricsCollector {
         totalWorkerCount,
         perProfileResponseTime: { ...this.currentBucket.perProfileResponseTime },
       };
+
+      // Accumulate per-profile response time into cumulative totals before eviction
+      for (const [name, data] of Object.entries(this.currentBucket.perProfileResponseTime)) {
+        if (!this.cumulativePerProfileResponseTime[name]) {
+          this.cumulativePerProfileResponseTime[name] = { sum: 0, count: 0 };
+        }
+        this.cumulativePerProfileResponseTime[name].sum += data.sum;
+        this.cumulativePerProfileResponseTime[name].count += data.count;
+      }
+
       this.samples.push(sample);
+
+      // Evict oldest samples to cap memory usage
+      if (this.samples.length > MetricsCollector.MAX_SAMPLES) {
+        this.samples.splice(0, this.samples.length - MetricsCollector.MAX_SAMPLES);
+      }
+
       this.currentBucket = this.createEmptyBucket();
     }
   }
 
   getSamples(): MetricsSample[] {
     return this.samples;
+  }
+
+  getCumulativePerProfileResponseTime(): Record<string, { sum: number; count: number }> {
+    return this.cumulativePerProfileResponseTime;
   }
 
   reset(): void {
@@ -93,5 +117,6 @@ export class MetricsCollector {
     this.totalRequests = 0;
     this.total503s = 0;
     this.droppedByRestart = 0;
+    this.cumulativePerProfileResponseTime = {};
   }
 }
