@@ -1,5 +1,5 @@
 {
-  "name": "slow-request-simulator",
+  "name": "pod-resilience-simulator",
   "private": true,
   "version": "0.0.0",
   "type": "module",

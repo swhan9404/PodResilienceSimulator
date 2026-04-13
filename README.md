@@ -1,8 +1,8 @@
-# Slow Request Simulator
+# Pod Resilience Simulator
 
 EKS 환경에서 동기(synchronous) worker 기반 Pod들이 느린 요청에 의해 어떻게 무너지고 복구되는지를 시뮬레이션하는 브라우저 기반 도구.
 
-> "slow request 비율이 X%일 때, Y초 후 서비스가 완전히 죽는다"를 시각적으로 확인하고, 복구까지의 시간을 측정할 수 있다.
+> Pod/Worker 분배, backlog 크기, probe 설정에 따른 cascading failure 발생과 복구 과정을 시각적으로 확인하고, 서비스의 지연 저항성을 측정할 수 있다.
 
 ## Screenshots
 
@@ -30,8 +30,8 @@ gunicorn sync worker 같은 동기 서버에서 slow request는 worker를 점유
 ## Quick Start
 
 ```bash
-git clone <repo-url>
-cd slow-request-simulator
+git clone https://github.com/swhan9404/PodResilienceSimulator.git
+cd PodResilienceSimulator
 npm install
 npm run dev
 ```

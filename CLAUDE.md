@@ -1,11 +1,11 @@
 <!-- GSD:project-start source:PROJECT.md -->
 ## Project
 
-**Slow Request Simulator**
+**Pod Resilience Simulator**
 
 EKS 환경에서 동기(synchronous) worker 기반 Pod들이 느린 요청(slow request)에 의해 어떻게 무너지고 복구되는지를 시뮬레이션하는 웹 기반 도구. 브라우저에서 이산 이벤트 시뮬레이션을 실행하며 배속 조절로 cascading failure 과정을 시각적으로 확인할 수 있다.
 
-**Core Value:** "slow request 비율이 X%일 때, Y초 후 서비스가 완전히 죽는다"를 시각적으로 확인하고, 복구까지의 시간을 측정할 수 있다.
+**Core Value:** Pod/Worker 분배, backlog 크기, probe 설정에 따른 cascading failure 발생과 복구 과정을 시각적으로 확인하고, 서비스의 지연 저항성을 측정할 수 있다.
 
 ### Constraints
 
